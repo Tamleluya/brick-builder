@@ -450,6 +450,13 @@ canvas.addEventListener('pointerdown', function(e){
   }
 });
 var lpTimer = null, lpDone = false;
+var camMode = false, orbitHinted = false;
+document.getElementById('btnCam').addEventListener('click', function(){
+  camMode = !camMode;
+  this.classList.toggle('active', camMode);
+  selectPart(null);
+  toast(camMode ? 'מצב מבט 🧭 — גררו כדי לסובב את המצלמה' : 'מצב בנייה — גרירה מזיזה חלקים');
+});
 
 canvas.addEventListener('pointermove', function(e){
   if (!ptrs.has(e.pointerId)) return;
@@ -478,14 +485,21 @@ canvas.addEventListener('pointermove', function(e){
   if (mode === 'maybe'){
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 9){
       clearTimeout(lpTimer);
-      if (hitPart){
+      if (hitPart && !camMode){
         mode = 'drag';
         dragSnap = snapshot();
         dragOrig = {x:hitPart.x, z:hitPart.z, l:hitPart.l};
         selectPart(hitPart);
         remOcc(hitPart);
-      } else {
+      } else if (camMode){
         mode = 'orbit';
+      } else {
+        // מצב בנייה: גרירה על רקע לא מזיזה את המצלמה בטעות
+        mode = 'idle';
+        if (!orbitHinted){
+          orbitHinted = true;
+          toast('לסיבוב המבט הקישו על 🧭 למעלה (צביטה לזום עובדת תמיד)');
+        }
       }
     } else return;
   }
