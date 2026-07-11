@@ -154,31 +154,32 @@ function matFor(c){
   return matCache[c];
 }
 
-/* ---------- כיוון מלא בתלת־ממד: 6 היפוכים × 4 סיבובים ---------- */
-var FLIP_EULERS = [
-  [0,0,0],              // רגיל
-  [Math.PI/2,0,0],      // הטיה קדימה
-  [Math.PI,0,0],        // הפוך
-  [-Math.PI/2,0,0],     // הטיה אחורה
-  [0,0,Math.PI/2],      // גלגול ימינה
-  [0,0,-Math.PI/2]      // גלגול שמאלה
-];
-var quatCache = {};
-function quatFor(r, o){
-  var k = (r||0) + '_' + (o||0);
-  if (quatCache[k]) return quatCache[k];
-  var e = FLIP_EULERS[o||0];
-  var qf = new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2]));
-  var qy = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (r||0)*Math.PI/2, 0));
-  quatCache[k] = qy.multiply(qf);
-  return quatCache[k];
+/* ---------- כיוון מלא בתלת־ממד: קווטרניון חופשי בצעדי 90° (24 מצבים) ---------- */
+var QID = [0,0,0,1];
+function quatOf(p){
+  var a = p.q || QID;
+  return new THREE.Quaternion(a[0], a[1], a[2], a[3]);
+}
+var AXES = {x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1)};
+/* סיבוב 90° סביב ציר עולם + הצמדה מדויקת לקבוצת הסיבובים (מונע סחף float) */
+function rotatedQuat(p, axis, dir){
+  var q = new THREE.Quaternion().setFromAxisAngle(AXES[axis], (dir || 1) * Math.PI/2).multiply(quatOf(p));
+  var m = new THREE.Matrix4().makeRotationFromQuaternion(q);
+  for (var i = 0; i < 16; i++) m.elements[i] = Math.round(m.elements[i]);
+  var out = new THREE.Quaternion().setFromRotationMatrix(m);
+  return [out.x, out.y, out.z, out.w];
+}
+function upOf(p){ return new THREE.Vector3(0,1,0).applyQuaternion(quatOf(p)); }
+function yawOf(p){
+  var d = new THREE.Vector3(0,0,1).applyQuaternion(quatOf(p));
+  return Math.atan2(d.x, d.z);
 }
 /* קופסה נומינלית (גוף החלק ללא בליטות) מסובבת — נותנת טביעת רגל, גובה ויישור */
 var _rv = null;
 function rotDims(p){
   if (!_rv) _rv = new THREE.Vector3();
   var t = TYPES[p.t];
-  var q = quatFor(p.r, p.o);
+  var q = quatOf(p);
   var mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
   for (var i=0;i<8;i++){
     _rv.set(i&1 ? t.w/2 : -t.w/2, i&2 ? t.h*0.4 : 0, i&4 ? t.d/2 : -t.d/2).applyQuaternion(q);
@@ -232,7 +233,7 @@ function heightAt(cells, exceptId){
 function placeMesh(p){
   var mesh = meshes.get(p.id);
   var rd = rotDims(p);
-  mesh.quaternion.copy(quatFor(p.r, p.o));
+  mesh.quaternion.copy(quatOf(p));
   // העוגן הוא פינת הרשת; ממקמים כך שהקופסה המסובבת ממורכזת בטביעת הרגל ותחתיתה בשכבה
   var padX = (rd.fw - rd.sx) / 2, padZ = (rd.fd - rd.sz) / 2;
   mesh.position.set(
@@ -270,8 +271,8 @@ function rebuildAll(){
 }
 
 /* אנכון מיקום: מרכז החלק בנק' המגע, מוצמד לרשת ולגבולות */
-function anchorFor(t, r, o, px, pz){
-  var d = rotDims({t:t, r:r, o:o});
+function anchorFor(t, q, px, pz){
+  var d = rotDims({t:t, q:q});
   var ax = Math.round(px - OFF - d.fw/2);
   var az = Math.round(pz - OFF - d.fd/2);
   ax = Math.max(0, Math.min(BOARD - d.fw, ax));
@@ -296,46 +297,65 @@ function selectPart(p){
   document.getElementById('actions').classList.toggle('on', !!p);
 }
 
-/* ---------- undo / שמירה ---------- */
+/* ---------- undo/redo / שמירה לפי משתמש ---------- */
 function snapshot(){ return JSON.stringify(parts); }
+var redoStack = [];
 function pushUndo(snap){
   undoStack.push(snap);
   if (undoStack.length > 60) undoStack.shift();
+  redoStack = [];
   syncTop();
 }
 function undo(){
   if (!undoStack.length) return;
   selectPart(null);
-  parts = JSON.parse(undoStack.pop());
+  redoStack.push(snapshot());
+  applySnap(undoStack.pop());
+}
+function redo(){
+  if (!redoStack.length) return;
+  selectPart(null);
+  undoStack.push(snapshot());
+  applySnap(redoStack.pop());
+}
+function applySnap(s){
+  parts = JSON.parse(s);
   nextId = parts.reduce(function(m,p){ return Math.max(m, p.id); }, 0) + 1;
   rebuildAll(); save(); syncTop();
 }
+var curUser = null;
+function userModelKey(n){ return 'bb-m4-' + n; }
 function save(){
-  try { localStorage.setItem('brick-proto-v3', snapshot()); } catch(e){}
+  try { if (curUser) localStorage.setItem(userModelKey(curUser), snapshot()); } catch(e){}
   syncTop();
   refreshSnapViz();
   if (spinOn) buildSpin();
 }
+/* טעינת רשימת חלקים לסצנה, כולל הורדה מהרשת של חלקי קטלוג חסרים */
+function setModel(list){
+  selectPart(null);
+  nextId = list.reduce(function(m,p){ return Math.max(m, p.id); }, 0) + 1;
+  parts = list.filter(function(p){ return TYPES[p.t]; });
+  var missing = list.filter(function(p){ return !TYPES[p.t]; });
+  rebuildAll();
+  syncTop(); refreshSnapViz();
+  if (missing.length){
+    var ids = {};
+    missing.forEach(function(p){ ids[p.t] = true; });
+    Promise.all(Object.keys(ids).map(function(id){
+      return buildRemotePart(id, catalogName(id)).catch(function(){ return null; });
+    })).then(function(){
+      missing.forEach(function(p){ if (TYPES[p.t]) addPart(p); });
+      syncTop(); refreshSnapViz();
+    });
+  }
+}
 function load(){
   try {
-    var s = localStorage.getItem('brick-proto-v3');
+    var s = curUser && localStorage.getItem(userModelKey(curUser));
     if (s){
       var list = JSON.parse(s);
-      nextId = list.reduce(function(m,p){ return Math.max(m, p.id); }, 0) + 1;
-      // חלקי קטלוג שהורדו בעבר צריכים טעינה מחדש מהרשת
-      parts = list.filter(function(p){ return TYPES[p.t]; });
-      var missing = list.filter(function(p){ return !TYPES[p.t]; });
-      rebuildAll();
-      if (missing.length){
-        var ids = {};
-        missing.forEach(function(p){ ids[p.t] = true; });
-        Promise.all(Object.keys(ids).map(function(id){
-          return buildRemotePart(id, catalogName(id)).catch(function(){ return null; });
-        })).then(function(){
-          missing.forEach(function(p){ if (TYPES[p.t]) addPart(p); });
-          syncTop(); refreshSnapViz();
-        });
-      }
+      setModel(list);
       return list.length > 0;
     }
   } catch(e){}
@@ -344,26 +364,28 @@ function load(){
 
 /* ---------- דגם פתיחה ---------- */
 function demo(){
-  function put(t,x,z,l,r,c,o){ addPart({id:nextId++, t:t, x:x, z:z, l:l, r:r, o:o||0, c:c}); }
-  // הערה: 3001 האמיתי הוא 4×2 (רוחב 4), לכן r=0 הוא הכיוון הרחב. שכבות בחצאי-פלטות.
+  var S2 = Math.SQRT1_2;
+  var QY1 = [0, S2, 0, S2]; // סיבוב 90° סביב Y
+  function put(t,x,z,l,c,q){ addPart({id:nextId++, t:t, x:x, z:z, l:l, q:q||null, c:c}); }
+  // הערה: 3001 האמיתי הוא 4×2 (רוחב 4). שכבות בחצאי-פלטות.
   var wallC = ['#c91a09','#f2cd37','#0055bf'];
   for (var lv=0; lv<3; lv++){
     var c = wallC[lv], l = lv*6;
-    put('3001', 8, 8, l, 0, c);  put('3001', 12, 8, l, 0, c);
-    put('3001', 8, 14, l, 0, c); put('3001', 12, 14, l, 0, c);
-    put('3001', 8, 10, l, 1, c); put('3001', 14, 10, l, 1, c);
+    put('3001', 8, 8, l, c);  put('3001', 12, 8, l, c);
+    put('3001', 8, 14, l, c); put('3001', 12, 14, l, c);
+    put('3001', 8, 10, l, c, QY1); put('3001', 14, 10, l, c, QY1);
   }
-  put('3031', 8, 8, 18, 0, '#237841');  put('3031', 12, 8, 18, 0, '#237841');
-  put('3031', 8, 12, 18, 0, '#237841'); put('3031', 12, 12, 18, 0, '#237841');
-  for (var k=0;k<4;k++) put('3003', 8, 8, 20 + k*6, 0, k%2 ? '#c91a09' : '#f2f3f2');
-  put('3941', 8, 8, 44, 0, '#f2cd37');
-  put('3039', 12, 14, 20, 0, '#c91a09');
-  put('3062b', 14, 10, 20, 0, '#fe8a18');
+  put('3031', 8, 8, 18, '#237841');  put('3031', 12, 8, 18, '#237841');
+  put('3031', 8, 12, 18, '#237841'); put('3031', 12, 12, 18, '#237841');
+  for (var k=0;k<4;k++) put('3003', 8, 8, 20 + k*6, k%2 ? '#c91a09' : '#f2f3f2');
+  put('3941', 8, 8, 44, '#f2cd37');
+  put('3039', 12, 14, 20, '#c91a09');
+  put('3062b', 14, 10, 20, '#fe8a18');
   // רכבת גלגלי שיניים 24→8→24→40 — לחצו ▶ להנעה
-  put('3648', 1, 17, 0, 0, '#a0a5a9');
-  put('3647', 4, 18, 0, 0, '#c91a09');
-  put('3648', 5, 17, 0, 0, '#f2cd37');
-  put('3649', 8, 16, 0, 0, '#a0a5a9');
+  put('3648', 1, 17, 0, '#a0a5a9');
+  put('3647', 4, 18, 0, '#c91a09');
+  put('3648', 5, 17, 0, '#f2cd37');
+  put('3649', 8, 16, 0, '#a0a5a9');
   save();
 }
 
@@ -411,7 +433,23 @@ canvas.addEventListener('pointerdown', function(e){
   var hit = castAt(e.clientX, e.clientY);
   hitPart = hit && hit.part ? hit.part : null;
   mode = 'maybe';
+  // לחיצה ארוכה על חלק = בחירה, גם כשמצב הנחה פעיל
+  lpDone = false;
+  clearTimeout(lpTimer);
+  if (hitPart){
+    var lpTarget = hitPart;
+    lpTimer = setTimeout(function(){
+      if (mode === 'maybe' && hitPart === lpTarget){
+        selectPart(lpTarget);
+        lpDone = true;
+        mode = 'idle';
+        vibrate(18);
+        toast('נבחר: ' + TYPES[lpTarget.t].n);
+      }
+    }, 420);
+  }
 });
+var lpTimer = null, lpDone = false;
 
 canvas.addEventListener('pointermove', function(e){
   if (!ptrs.has(e.pointerId)) return;
@@ -439,6 +477,7 @@ canvas.addEventListener('pointermove', function(e){
 
   if (mode === 'maybe'){
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 9){
+      clearTimeout(lpTimer);
       if (hitPart){
         mode = 'drag';
         dragSnap = snapshot();
@@ -459,7 +498,7 @@ canvas.addEventListener('pointermove', function(e){
     var hit = castAt(e.clientX, e.clientY, hitPart.id);
     if (hit){
       var p = hitPart;
-      var an = anchorFor(p.t, p.r, p.o, hit.point.x, hit.point.z);
+      var an = anchorFor(p.t, p.q, hit.point.x, hit.point.z);
       p.x = an.x; p.z = an.z;
       p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
       placeMesh(p);
@@ -470,6 +509,8 @@ canvas.addEventListener('pointermove', function(e){
 function pointerEnd(e){
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
+  clearTimeout(lpTimer);
+  if (lpDone){ lpDone = false; mode = 'idle'; return; }
 
   if (mode === 'pinch'){
     if (ptrs.size < 2){ mode = 'idle'; pinch = null; }
@@ -481,8 +522,8 @@ function pointerEnd(e){
     if (armed){
       var hit = castAt(e.clientX, e.clientY);
       if (hit){
-        var an = anchorFor(armed, 0, 0, hit.point.x, hit.point.z);
-        var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, r:0, o:0, c:curColor};
+        var an = anchorFor(armed, null, hit.point.x, hit.point.z);
+        var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, q:null, c:curColor};
         np.l = heightAt(cellsOf(np));
         if (np.l <= MAXH){
           pushUndo(snapshot());
@@ -521,13 +562,22 @@ canvas.addEventListener('wheel', function(e){
 
 /* ---------- כפתורים ---------- */
 document.getElementById('btnUndo').addEventListener('click', undo);
+document.getElementById('btnRedo').addEventListener('click', redo);
+/* אישור בהקשה כפולה — confirm() חסום בחלק מהסביבות */
+var clearArmedAt = 0;
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!parts.length) return;
-  if (confirm('למחוק את כל הדגם?')){
-    pushUndo(snapshot());
-    selectPart(null);
-    parts = []; rebuildAll(); save();
+  var now = performance.now();
+  if (now - clearArmedAt > 2600){
+    clearArmedAt = now;
+    toast('בטוחים? הקשה נוספת על 🗑 תמחק את כל הדגם');
+    return;
   }
+  clearArmedAt = 0;
+  pushUndo(snapshot());
+  selectPart(null);
+  parts = []; rebuildAll(); save();
+  toast('הדגם נמחק — אפשר להתחרט עם ↩');
 });
 document.getElementById('btnDel').addEventListener('click', function(){
   if (!sel) return;
@@ -541,23 +591,28 @@ function reorient(p, mut){
   var cx = p.x + f0.w/2, cz = p.z + f0.d/2;
   remOcc(p);
   mut(p);
-  var an = anchorFor(p.t, p.r, p.o, cx + OFF, cz + OFF);
+  var an = anchorFor(p.t, p.q, cx + OFF, cz + OFF);
   p.x = an.x; p.z = an.z;
   p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
   addOcc(p); placeMesh(p); save(); vibrate(6);
 }
+/* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה */
 document.getElementById('btnRot').addEventListener('click', function(){
   if (!sel) return;
-  reorient(sel, function(p){ p.r = (p.r + 1) % 4; });
+  reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
 });
-document.getElementById('btnFlip').addEventListener('click', function(){
+document.getElementById('btnPitch').addEventListener('click', function(){
   if (!sel) return;
-  reorient(sel, function(p){ p.o = ((p.o||0) + 1) % 6; });
+  reorient(sel, function(p){ p.q = rotatedQuat(p, 'x', 1); });
+});
+document.getElementById('btnRoll').addEventListener('click', function(){
+  if (!sel) return;
+  reorient(sel, function(p){ p.q = rotatedQuat(p, 'z', 1); });
 });
 document.getElementById('btnDup').addEventListener('click', function(){
   if (!sel) return;
   pushUndo(snapshot());
-  var np = {id:nextId++, t:sel.t, x:sel.x, z:sel.z, l:0, r:sel.r, o:sel.o||0, c:sel.c};
+  var np = {id:nextId++, t:sel.t, x:sel.x, z:sel.z, l:0, q:sel.q ? sel.q.slice() : null, c:sel.c};
   np.l = heightAt(cellsOf(np));
   if (np.l <= MAXH){ addPart(np); selectPart(np); save(); vibrate(9); }
 });
@@ -600,7 +655,20 @@ function syncPalette(){
   Array.from(catsEl.children).forEach(function(el){
     el.classList.toggle('on', el.dataset.c === curCat);
   });
+  // סרגל מצב: מה מניחים עכשיו
+  var bar = document.getElementById('armedBar');
+  if (armed){
+    document.getElementById('armedName').textContent = 'מניח: ' + TYPES[armed].n + ' · לחיצה ארוכה בוחרת חלק';
+    bar.classList.add('on');
+  } else {
+    bar.classList.remove('on');
+  }
 }
+document.getElementById('btnDisarm').addEventListener('click', function(){
+  armed = null;
+  syncPalette();
+  toast('מצב בחירה — הקישו על חלק כדי לערוך אותו');
+});
 CATS.forEach(function(c){
   var b = document.createElement('button');
   b.className = 'cat';
@@ -898,7 +966,7 @@ window.__snapCount = function(){ return snapGroup.children.length; };
 var spinOn = false, spinNodes = null, spinA = 0;
 function gearCenter(p){ var f = fp(p); return {x: p.x + f.w/2, z: p.z + f.d/2}; }
 function buildSpin(){
-  var nodes = parts.filter(function(p){ return PD.parts[p.t].teeth && !(p.o||0); }).map(function(p){
+  var nodes = parts.filter(function(p){ return PD.parts[p.t].teeth && upOf(p).y > 0.99; }).map(function(p){
     var n = PD.parts[p.t].teeth;
     return {p: p, c: gearCenter(p), n: n, r: n/16, ratio: 0, phase: 0, seen: false};
   });
@@ -906,7 +974,7 @@ function buildSpin(){
     if (nodes[i].seen) continue;
     nodes[i].seen = true;
     nodes[i].ratio = 1;
-    nodes[i].phase = nodes[i].p.r * Math.PI/2;
+    nodes[i].phase = yawOf(nodes[i].p);
     var q = [nodes[i]];
     while (q.length){
       var a = q.shift();
@@ -941,11 +1009,91 @@ document.getElementById('btnSnap').addEventListener('click', function(){
   refreshSnapViz();
 });
 
+/* ---------- משתמשים ושיתוף ---------- */
+function getUsers(){ try { return JSON.parse(localStorage.getItem('bb-users') || '[]'); } catch(e){ return []; } }
+function setUsers(u){ try { localStorage.setItem('bb-users', JSON.stringify(u)); } catch(e){} }
+function syncUserBtn(){ document.getElementById('btnUser').textContent = '👤 ' + (curUser || ''); }
+function switchUser(name){
+  if (getUsers().indexOf(name) < 0) setUsers(getUsers().concat([name]));
+  curUser = name;
+  try { localStorage.setItem('bb-user', name); } catch(e){}
+  syncUserBtn();
+  undoStack = []; redoStack = [];
+  if (!load()){ setModel([]); demo(); }
+}
+var toastTimer = null;
+function toast(msg){
+  var h = document.getElementById('hint');
+  h.textContent = msg;
+  h.classList.remove('gone');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ h.classList.add('gone'); }, 3500);
+}
+var usersPanel = document.getElementById('usersPanel');
+function renderUsers(){
+  var listEl = document.getElementById('usersList');
+  listEl.innerHTML = '';
+  getUsers().forEach(function(n){
+    var row = document.createElement('button');
+    row.className = 'sr';
+    var nm = document.createElement('span');
+    nm.className = 'pname';
+    nm.style.direction = 'rtl'; nm.style.textAlign = 'right';
+    nm.textContent = (n === curUser ? '✓ ' : '') + n;
+    row.appendChild(nm);
+    row.addEventListener('click', function(){
+      switchUser(n);
+      usersPanel.hidden = true;
+      toast('עברת למשתמש ' + n + ' — הדגם שלו נטען');
+    });
+    listEl.appendChild(row);
+  });
+}
+document.getElementById('btnUser').addEventListener('click', function(){
+  usersPanel.hidden = false;
+  renderUsers();
+});
+document.getElementById('btnCloseUsers').addEventListener('click', function(){ usersPanel.hidden = true; });
+usersPanel.addEventListener('click', function(e){ if (e.target === usersPanel) usersPanel.hidden = true; });
+document.getElementById('btnAddUser').addEventListener('click', function(){
+  var inp = document.getElementById('newUserName');
+  var n = inp.value.trim();
+  if (!n) return;
+  inp.value = '';
+  switchUser(n);
+  usersPanel.hidden = true;
+  toast('נוצר משתמש חדש: ' + n);
+});
+document.getElementById('btnShare').addEventListener('click', function(){
+  var data = btoa(unescape(encodeURIComponent(snapshot())));
+  var url = location.origin + location.pathname + '#m=' + data;
+  var cp = (navigator.clipboard && navigator.clipboard.writeText) ? navigator.clipboard.writeText(url) : Promise.reject();
+  cp.then(function(){ toast('קישור לדגם הועתק — שלחו לחברים 🎉'); })
+    .catch(function(){
+      var panel = document.getElementById('linkPanel');
+      var out = document.getElementById('linkOut');
+      panel.hidden = false;
+      out.value = url;
+      out.focus(); out.select();
+    });
+});
+document.getElementById('btnCloseLink').addEventListener('click', function(){
+  document.getElementById('linkPanel').hidden = true;
+});
+document.getElementById('linkPanel').addEventListener('click', function(e){
+  if (e.target === document.getElementById('linkPanel')) document.getElementById('linkPanel').hidden = true;
+});
+function readHashModel(){
+  if (location.hash.indexOf('#m=') !== 0) return null;
+  try { return JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3))))); } catch(e){ return null; }
+}
+
 /* ---------- HUD ---------- */
 var stN = document.getElementById('stN'), stF = document.getElementById('stF');
 function syncTop(){
   stN.textContent = parts.length;
   document.getElementById('btnUndo').disabled = !undoStack.length;
+  document.getElementById('btnRedo').disabled = !redoStack.length;
 }
 var fpsAcc = 0, fpsCnt = 0, fpsLast = 0;
 
@@ -992,11 +1140,32 @@ function tick(ts){
 resize();
 fitCamera();
 updateCamera();
-if (!load()) demo();
+curUser = localStorage.getItem('bb-user') || 'אורח';
+try { localStorage.setItem('bb-user', curUser); } catch(e){}
+if (getUsers().indexOf(curUser) < 0) setUsers(getUsers().concat([curUser]));
+syncUserBtn();
+var sharedModel = readHashModel();
+if (sharedModel){
+  // דגם משותף נטען למשתמש ייעודי כדי לא לדרוס דגמים של אף אחד
+  curUser = 'דגם משותף';
+  if (getUsers().indexOf(curUser) < 0) setUsers(getUsers().concat([curUser]));
+  try { localStorage.setItem('bb-user', curUser); } catch(e){}
+  syncUserBtn();
+  setModel(sharedModel); save();
+  toast('נטען דגם משותף 🎁 — הדגמים שלך שמורים תחת 👤');
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+} else if (!load()){
+  demo();
+}
 syncTop();
 requestAnimationFrame(tick);
 window.__ready = true;
 window.__partCount = function(){ return parts.length; };
+window.__selQ = function(){ return sel ? (sel.q || null) : null; };
+window.__hitTest = function(x, y){
+  var h = castAt(x, y);
+  return h ? (h.part ? 'part:' + h.part.id : 'ground@' + Math.round(h.point.x) + ',' + Math.round(h.point.z)) : 'none';
+};
 window.__gearRots = function(){
   return (spinNodes || []).map(function(n){
     var m = meshes.get(n.p.id);
