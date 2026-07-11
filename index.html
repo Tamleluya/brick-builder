@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>בונה הקוביות — אב־טיפוס</title>
+</head>
+<body>
+<title>בונה הקוביות — אב־טיפוס</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<style>
+  :root{
+    --panel: rgba(21,29,38,.85);
+    --panel-soft: rgba(255,255,255,.07);
+    --text:#f2f6f9;
+    --muted:#9db0be;
+    --accent:#f6c445;
+    --accent-ink:#26200a;
+    --danger:#e2574c;
+    --radius:14px;
+  }
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#dbe7f0;}
+  body{
+    direction:rtl;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Hebrew","Heebo",Arial,sans-serif;
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:none;
+    color:var(--text);
+  }
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+
+  .pill{
+    background:var(--panel);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border-radius:var(--radius);
+    box-shadow:0 4px 18px rgba(10,20,30,.22);
+  }
+
+  .topbar{
+    position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);
+    right:12px;left:12px;
+    display:flex;align-items:stretch;gap:8px;
+    pointer-events:none;z-index:10;
+  }
+  .topbar>*{pointer-events:auto;}
+  .brand{padding:6px 12px;display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:0;}
+  .brand b{font-size:13.5px;letter-spacing:.2px;white-space:nowrap;}
+  .brand span{font-size:10px;color:var(--muted);white-space:nowrap;}
+  @media (max-width:460px){ .brand span{display:none} }
+  .stats{padding:6px 10px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;}
+  .stats b{color:var(--text);font-weight:600;}
+  .spacer{flex:1;pointer-events:none!important;}
+  .tbtn{
+    width:42px;min-width:42px;border:0;cursor:pointer;
+    background:var(--panel);color:var(--text);
+    border-radius:var(--radius);font-size:17px;line-height:1;
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    box-shadow:0 4px 18px rgba(10,20,30,.22);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .tbtn:active{transform:scale(.94);}
+  .tbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .tbtn[disabled]{opacity:.35;}
+  .tbtn.active{background:var(--accent);color:var(--accent-ink);}
+
+  .hint{
+    position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);
+    right:50%;transform:translateX(50%);
+    padding:6px 14px;font-size:11.5px;color:var(--muted);
+    z-index:9;transition:opacity .6s;text-align:center;max-width:86vw;line-height:1.5;
+  }
+  .hint.gone{opacity:0;pointer-events:none;}
+
+  .actions{
+    position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 148px);
+    right:50%;transform:translateX(50%);
+    display:none;gap:6px;z-index:10;padding:6px;
+  }
+  .actions.on{display:flex;}
+  .abtn{
+    border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:10px;padding:9px 13px;font-size:12.5px;font-family:inherit;
+    display:flex;align-items:center;gap:6px;
+  }
+  .abtn:active{transform:scale(.95);}
+  .abtn.danger{color:#ffb1a8;}
+
+  .dock{
+    position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+    right:10px;left:10px;z-index:10;
+    max-width:660px;margin:0 auto;
+    padding:10px 10px 8px;
+    display:flex;flex-direction:column;gap:9px;
+  }
+  .colors{display:flex;gap:9px;justify-content:center;flex-wrap:nowrap;overflow-x:auto;padding:2px;}
+  .sw{
+    width:27px;height:27px;min-width:27px;border-radius:50%;cursor:pointer;
+    border:2.5px solid rgba(255,255,255,.18);box-sizing:border-box;
+    transition:transform .12s,border-color .12s;
+  }
+  .sw.on{border-color:var(--accent);transform:scale(1.18);}
+  .search{
+    position:fixed;inset:0;z-index:30;
+    background:rgba(10,16,22,.45);
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    display:flex;align-items:flex-start;justify-content:center;
+    padding:calc(env(safe-area-inset-top,0px) + 60px) 12px 12px;
+  }
+  .search[hidden]{display:none;}
+  .searchBox{width:min(560px,100%);padding:12px;display:flex;flex-direction:column;gap:8px;}
+  .searchHead{display:flex;gap:8px;}
+  #searchInput{
+    flex:1;border:0;border-radius:10px;padding:11px 13px;font-size:14px;font-family:inherit;
+    background:var(--panel-soft);color:var(--text);outline:none;min-width:0;
+  }
+  #searchInput:focus{outline:2px solid var(--accent);}
+  .searchMeta{font-size:11px;color:var(--muted);padding:0 2px;}
+  .searchResults{max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+  .sr{
+    display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;
+    background:transparent;border:0;font-family:inherit;text-align:right;color:var(--text);
+  }
+  .sr:hover,.sr:focus-visible{background:var(--panel-soft);}
+  .sr .pid{
+    font-size:11px;color:var(--accent);min-width:56px;direction:ltr;text-align:left;
+    font-variant-numeric:tabular-nums;flex-shrink:0;
+  }
+  .sr .pname{font-size:12.5px;direction:ltr;text-align:left;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sr.loading{opacity:.55;pointer-events:none;}
+  .cats{display:flex;gap:6px;overflow-x:auto;padding:0 2px;scrollbar-width:none;}
+  .cats::-webkit-scrollbar{display:none;}
+  .cat{
+    border:0;cursor:pointer;background:transparent;color:var(--muted);
+    font-family:inherit;font-size:11.5px;padding:5px 10px;border-radius:9px;white-space:nowrap;
+  }
+  .cat.on{background:var(--panel-soft);color:var(--text);font-weight:600;}
+  .chip .gearIcon{font-size:22px;line-height:1;height:15px;display:flex;align-items:center;}
+  .parts{display:flex;gap:8px;overflow-x:auto;padding:2px;scrollbar-width:none;justify-content:flex-start;}
+  .parts::-webkit-scrollbar{display:none;}
+  .chip{
+    min-width:62px;padding:8px 6px 6px;border-radius:12px;cursor:pointer;
+    background:var(--panel-soft);
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    transition:background .12s;flex:0 0 auto;
+  }
+  .chip .dots{display:grid;gap:3px;direction:ltr;}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:#cfdbe5;}
+  .chip.flat .dot{width:6px;height:3px;border-radius:2px;margin-top:1.5px;margin-bottom:1.5px;}
+  .chip small{font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .chip.on{background:var(--accent);}
+  .chip.on small{color:var(--accent-ink);font-weight:600;}
+  .chip.on .dot{background:var(--accent-ink);}
+</style>
+
+<canvas id="c"></canvas>
+
+<div class="topbar">
+  <div class="brand pill">
+    <b>בונה הקוביות</b>
+    <span>אב־טיפוס · חלקי LDraw אמיתיים (CC BY 4.0)</span>
+  </div>
+  <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
+  <div class="spacer"></div>
+  <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
+  <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
+  <button class="tbtn" id="btnSnap" title="נקודות חיבור">🔩</button>
+  <button class="tbtn" id="btnUndo" title="בטל">↩</button>
+  <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
+</div>
+
+<div class="hint pill" id="hint">הקשה מניחה · גרירת קובייה מזיזה · גרירת רקע מסובבת · ▶ מניע את גלגלי השיניים</div>
+
+<div class="actions pill" id="actions">
+  <button class="abtn" id="btnRot">⟳ סובב</button>
+  <button class="abtn" id="btnFlip">⤸ הפוך</button>
+  <button class="abtn" id="btnDup">⧉ שכפל</button>
+  <button class="abtn" id="btnPaint">🎨 צבע</button>
+  <button class="abtn danger" id="btnDel">✕ מחק</button>
+</div>
+
+<div class="search" id="searchPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <input id="searchInput" type="search" placeholder="חיפוש בקטלוג המלא — שם באנגלית או מספר חלק" autocomplete="off">
+      <button class="tbtn" id="btnCloseSearch">✕</button>
+    </div>
+    <div class="searchMeta" id="searchMeta"></div>
+    <div class="searchResults" id="searchResults"></div>
+  </div>
+</div>
+
+<div class="dock pill">
+  <div class="colors" id="colors"></div>
+  <div class="cats" id="cats"></div>
+  <div class="parts" id="parts"></div>
+</div>
+
+<script>window.__errs=[];window.onerror=function(m,s,l){window.__errs.push(m+' @'+l);};</script>
+<script src="three.min.js"></script>
+<script src="parts-data.js"></script>
+<script src="catalog.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
