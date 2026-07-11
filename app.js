@@ -674,7 +674,14 @@ CATS.forEach(function(c){
   b.className = 'cat';
   b.dataset.c = c[0];
   b.textContent = c[1];
-  b.addEventListener('click', function(){ curCat = c[0]; syncPalette(); });
+  b.addEventListener('click', function(){
+    curCat = c[0];
+    syncPalette();
+    // טאב הקטלוג ריק עד שמורידים חלקים — פותחים ישר את החיפוש
+    if (c[0] === 'c' && !TYPE_ORDER.some(function(t){ return PD.parts[t].cat === 'c'; })){
+      openSearch();
+    }
+  });
   catsEl.appendChild(b);
 });
 function makeChip(t){
@@ -1019,7 +1026,7 @@ function switchUser(name){
   try { localStorage.setItem('bb-user', name); } catch(e){}
   syncUserBtn();
   undoStack = []; redoStack = [];
-  if (!load()){ setModel([]); demo(); }
+  if (!load()) setModel([]); // משתמש חדש מתחיל בלוח נקי
 }
 var toastTimer = null;
 function toast(msg){
@@ -1063,6 +1070,14 @@ document.getElementById('btnAddUser').addEventListener('click', function(){
   switchUser(n);
   usersPanel.hidden = true;
   toast('נוצר משתמש חדש: ' + n);
+});
+document.getElementById('btnDemo').addEventListener('click', function(){
+  pushUndo(snapshot());
+  selectPart(null);
+  parts = []; rebuildAll();
+  demo();
+  usersPanel.hidden = true;
+  toast('נטען דגם לדוגמה — עם רכבת גלגלי שיניים, לחצו ▶');
 });
 document.getElementById('btnShare').addEventListener('click', function(){
   var data = btoa(unescape(encodeURIComponent(snapshot())));
@@ -1155,7 +1170,8 @@ if (sharedModel){
   toast('נטען דגם משותף 🎁 — הדגמים שלך שמורים תחת 👤');
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
 } else if (!load()){
-  demo();
+  setModel([]); // התחלה בלוח נקי; דגם לדוגמה זמין בתפריט 👤
+  toast('לוח נקי ומוכן — בחרו חלק למטה והקישו על הלוח');
 }
 syncTop();
 requestAnimationFrame(tick);
