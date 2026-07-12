@@ -89,6 +89,20 @@
   }
   .armedBar.on{display:flex;}
   .armedBar .abtn{padding:6px 9px;}
+  .selCount{
+    position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 210px);
+    right:50%;transform:translateX(50%);z-index:9;
+    display:none;padding:5px 14px;font-size:12px;color:var(--accent);font-weight:600;white-space:nowrap;
+  }
+  body.multiSel .selCount{display:block;}
+  .abtn.active{background:var(--accent);color:var(--accent-ink);}
+  /* הטיה/גלגול תקפים לחלק בודד בלבד */
+  body.multiSel .abtn.onlyOne{opacity:.4;}
+  .subchip{position:relative;}
+  .subDel{
+    position:absolute;top:-6px;left:-6px;width:18px;height:18px;border:0;border-radius:50%;
+    background:var(--danger);color:#fff;font-size:10px;line-height:1;cursor:pointer;padding:0;
+  }
   /* כשחלק נבחר: הפלטה מתקפלת ותפריט הפעולות יורד למקומה */
   body.hasSel .dock{display:none;}
   body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 14px);}
@@ -195,22 +209,37 @@
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
 </div>
 
-<div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה חלק · לחיצה ארוכה בוחרת · 🧭 לסיבוב המבט · ▶ מניע גלגלי שיניים</div>
+<div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · ➕ בחר עוד לקבוצה · 🧩 שומר מודול · 🔩 מציג נקודות חיבור · ▶ מניע גלגלים</div>
+
+<div class="selCount pill" id="selCount"></div>
 
 <div class="actions pill" id="actions">
+  <button class="abtn" id="btnMulti" title="בחירה מרובה">➕ בחר עוד</button>
   <button class="abtn" id="btnUp" title="הרמה בגובה">⬆ הרם</button>
   <button class="abtn" id="btnDown" title="הורדה בגובה">⬇ הורד</button>
-  <button class="abtn" id="btnRot" title="סיבוב סביב הציר האנכי">⟳ סובב</button>
-  <button class="abtn" id="btnPitch" title="הטיה קדימה">⤓ הטה</button>
-  <button class="abtn" id="btnRoll" title="גלגול הצידה">⤿ גלגל</button>
+  <button class="abtn" id="btnRot" title="סיבוב">⟳ סובב</button>
+  <button class="abtn onlyOne" id="btnPitch" title="הטיה קדימה">⤓ הטה</button>
+  <button class="abtn onlyOne" id="btnRoll" title="גלגול הצידה">⤿ גלגל</button>
   <button class="abtn" id="btnDup">⧉ שכפל</button>
   <button class="abtn" id="btnPaint">🎨 צבע</button>
+  <button class="abtn" id="btnSaveSub" title="שמירת הבחירה כמודול">🧩 מודול</button>
   <button class="abtn danger" id="btnDel">✕ מחק</button>
 </div>
 
 <div class="armedBar pill" id="armedBar">
   <span id="armedName"></span>
   <button class="abtn" id="btnDisarm">✕</button>
+</div>
+
+<div class="search" id="subPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <input id="subName" type="text" placeholder="שם המודול (למשל: גלגל, מנוע, דלת)…" autocomplete="off">
+      <button class="tbtn" id="btnSubSave" title="שמור">💾</button>
+      <button class="tbtn" id="btnSubClose">✕</button>
+    </div>
+    <div class="searchMeta">המודול יישמר בטאב "מודולים 🧩" ותוכלו להניח אותו שוב ושוב כיחידה אחת.</div>
+  </div>
 </div>
 
 <div class="search" id="linkPanel" hidden>

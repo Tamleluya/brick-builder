@@ -26,7 +26,9 @@ var parts = [];          // {id,t,x,z,l,r,c}
 var nextId = 1;
 var occ = new Map();     // "x,z" -> [{s,e,id}]
 var meshes = new Map();  // id -> mesh
-var sel = null;          // part מסומן
+var sel = null;          // החלק הראשי המסומן (הראשון בבחירה)
+var selIds = [];         // בחירה מרובה — מזהי כל החלקים המסומנים
+var multiMode = false;   // מצב "בחר עוד" — הקשה מוסיפה/מסירה מהבחירה
 var armed = '3001';      // סוג חלק חמוש להנחה (null = כבוי)
 var curColor = COLORS[0];
 var undoStack = [];
@@ -280,22 +282,40 @@ function anchorFor(t, q, px, pz){
   return {x:ax, z:az};
 }
 
-function selectPart(p){
-  if (sel){
-    var m0 = meshes.get(sel.id);
-    if (m0) m0.material = matFor(sel.c);
-  }
-  sel = p;
-  if (p){
-    armed = null; syncPalette();
-    var m = meshes.get(p.id);
-    var hm = matFor(p.c).clone();
-    hm.emissive = new THREE.Color(0x2a4a66);
-    hm.emissiveIntensity = 0.9;
-    m.material = hm;
-  }
-  document.getElementById('actions').classList.toggle('on', !!p);
-  document.body.classList.toggle('hasSel', !!p); // הדוק מתקפל כדי לא להסתיר את הלוח
+function partById(id){ for (var i=0;i<parts.length;i++) if (parts[i].id === id) return parts[i]; return null; }
+function selParts(){ return selIds.map(partById).filter(Boolean); }
+function applySelVisual(){
+  parts.forEach(function(p){
+    var m = meshes.get(p.id); if (!m) return;
+    if (selIds.indexOf(p.id) >= 0){
+      var hm = matFor(p.c).clone();
+      hm.emissive = new THREE.Color(0x2a4a66);
+      hm.emissiveIntensity = 0.9;
+      m.material = hm;
+    } else if (m.material.emissive){
+      m.material = matFor(p.c);
+    }
+  });
+}
+function afterSel(){
+  sel = selIds.length ? partById(selIds[0]) : null;
+  if (selIds.length) armed = null;
+  applySelVisual();
+  syncPalette();
+  var has = selIds.length > 0, multi = selIds.length > 1;
+  document.getElementById('actions').classList.toggle('on', has);
+  document.body.classList.toggle('hasSel', has);
+  document.body.classList.toggle('multiSel', multi);
+  var sc = document.getElementById('selCount');
+  if (sc){ sc.textContent = multi ? selIds.length + ' חלקים נבחרו' : ''; sc.style.display = multi ? '' : 'none'; }
+  var mb = document.getElementById('btnMulti');
+  if (mb) mb.classList.toggle('active', multiMode);
+}
+function selectPart(p){ selIds = p ? [p.id] : []; if (!p) multiMode = false; afterSel(); }
+function toggleSelect(p){
+  var i = selIds.indexOf(p.id);
+  if (i >= 0) selIds.splice(i, 1); else selIds.push(p.id);
+  afterSel();
 }
 
 /* ---------- undo/redo / שמירה לפי משתמש ---------- */
@@ -411,7 +431,7 @@ function castAt(cx, cy, excludeId){
 /* ---------- אינטראקציה ---------- */
 var ptrs = new Map();
 var mode = 'idle';       // idle | maybe | orbit | drag | pinch
-var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null;
+var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null, dragGroup=null;
 var pinch = null;
 
 function vibrate(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
@@ -441,11 +461,11 @@ canvas.addEventListener('pointerdown', function(e){
     var lpTarget = hitPart;
     lpTimer = setTimeout(function(){
       if (mode === 'maybe' && hitPart === lpTarget){
-        selectPart(lpTarget);
+        if (multiMode) toggleSelect(lpTarget); else selectPart(lpTarget);
         lpDone = true;
         mode = 'idle';
         vibrate(18);
-        toast('נבחר: ' + TYPES[lpTarget.t].n);
+        toast(multiMode ? 'בבחירה: ' + selIds.length + ' חלקים' : 'נבחר: ' + TYPES[lpTarget.t].n);
       }
     }, 420);
   }
@@ -488,9 +508,15 @@ canvas.addEventListener('pointermove', function(e){
       if (hitPart){
         mode = 'drag';
         dragSnap = snapshot();
-        dragOrig = {x:hitPart.x, z:hitPart.z, l:hitPart.l};
-        selectPart(hitPart);
-        remOcc(hitPart);
+        // גרירת חלק שהוא חלק מבחירה מרובה = הזזת כל הקבוצה יחד
+        if (selIds.indexOf(hitPart.id) >= 0 && selIds.length > 1){
+          dragGroup = selParts();
+        } else {
+          selectPart(hitPart);
+          dragGroup = [hitPart];
+        }
+        dragOrig = dragGroup.map(function(p){ return {p:p, x:p.x, z:p.z, l:p.l}; });
+        dragGroup.forEach(remOcc);
       } else if (!camLock){
         mode = 'orbit';
       } else {
@@ -508,14 +534,26 @@ canvas.addEventListener('pointermove', function(e){
     camTheta -= dx * 0.0062;
     camPhi -= dy * 0.0062;
     updateCamera();
-  } else if (mode === 'drag' && hitPart){
-    var hit = castAt(e.clientX, e.clientY, hitPart.id);
+  } else if (mode === 'drag' && dragGroup){
+    var hit = castAt(e.clientX, e.clientY, dragGroup.length === 1 ? dragGroup[0].id : -1);
     if (hit){
-      var p = hitPart;
-      var an = anchorFor(p.t, p.q, hit.point.x, hit.point.z);
-      p.x = an.x; p.z = an.z;
-      p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
-      placeMesh(p);
+      var an = anchorFor(hitPart.t, hitPart.q, hit.point.x, hit.point.z);
+      var ddx = an.x - hitPart.x, ddz = an.z - hitPart.z;
+      // הגבלת התזוזה כך שכל הקבוצה נשארת בתוך הלוח
+      dragGroup.forEach(function(p){
+        var f = fp(p);
+        if (p.x + ddx < 0) ddx = -p.x;
+        if (p.x + ddx > BOARD - f.w) ddx = BOARD - f.w - p.x;
+        if (p.z + ddz < 0) ddz = -p.z;
+        if (p.z + ddz > BOARD - f.d) ddz = BOARD - f.d - p.z;
+      });
+      dragGroup.forEach(function(p){ p.x += ddx; p.z += ddz; });
+      if (dragGroup.length === 1){
+        // חלק בודד: מנוע חיבור בוחר את הגובה (הצמדה לבליטות/ישיבה על חלק אחר)
+        dragGroup[0].l = connectLayer(dragGroup[0]);
+      }
+      dragGroup.forEach(placeMesh);
+      showMateViz(dragGroup);
     }
   }
 });
@@ -533,36 +571,47 @@ function pointerEnd(e){
 
   if (mode === 'maybe'){
     // הקשה
-    if (armed){
+    if (armed && armed.indexOf('sub:') === 0){
+      var hitS = castAt(e.clientX, e.clientY);
+      var sub = getSubs()[+armed.slice(4)];
+      if (hitS && sub) placeSub(sub, hitS.point.x, hitS.point.z);
+    } else if (armed){
       var hit = castAt(e.clientX, e.clientY);
       if (hit){
         var an = anchorFor(armed, null, hit.point.x, hit.point.z);
         var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, q:null, c:curColor};
-        np.l = heightAt(cellsOf(np));
+        np.l = connectLayer(np);
         if (np.l <= MAXH){
           pushUndo(snapshot());
           addPart(np); save(); vibrate(9);
         }
       }
     } else if (hitPart){
-      selectPart(hitPart); vibrate(6);
-    } else {
+      if (multiMode) toggleSelect(hitPart); else selectPart(hitPart);
+      vibrate(6);
+    } else if (!multiMode){
       selectPart(null);
     }
-  } else if (mode === 'drag' && hitPart){
-    addOcc(hitPart); placeMesh(hitPart);
-    if (dragOrig && (dragOrig.x !== hitPart.x || dragOrig.z !== hitPart.z || dragOrig.l !== hitPart.l)){
+  } else if (mode === 'drag' && dragGroup){
+    dragGroup.forEach(addOcc);
+    dragGroup.forEach(placeMesh);
+    var moved = dragOrig && dragOrig.some(function(o){ return o.x !== o.p.x || o.z !== o.p.z || o.l !== o.p.l; });
+    if (moved){
       pushUndo(dragSnap); save(); vibrate(9);
+      var mates = countMates(dragGroup);
+      if (mates) toast('🔗 התחבר · ' + mates + ' נקודות חיבור');
     }
-    dragSnap = null; dragOrig = null;
+    clearMateViz();
+    dragSnap = null; dragOrig = null; dragGroup = null;
   }
   mode = 'idle';
 }
 canvas.addEventListener('pointerup', pointerEnd);
 canvas.addEventListener('pointercancel', function(e){
-  if (mode === 'drag' && hitPart && dragOrig){
-    hitPart.x=dragOrig.x; hitPart.z=dragOrig.z; hitPart.l=dragOrig.l;
-    addOcc(hitPart); placeMesh(hitPart);
+  if (mode === 'drag' && dragGroup && dragOrig){
+    dragOrig.forEach(function(o){ o.p.x=o.x; o.p.z=o.z; o.p.l=o.l; addOcc(o.p); placeMesh(o.p); });
+    clearMateViz();
+    dragGroup = null;
   }
   ptrs.delete(e.pointerId);
   mode = 'idle';
@@ -594,10 +643,10 @@ document.getElementById('btnClear').addEventListener('click', function(){
   toast('הדגם נמחק — אפשר להתחרט עם ↩');
 });
 document.getElementById('btnDel').addEventListener('click', function(){
-  if (!sel) return;
+  if (!selIds.length) return;
   pushUndo(snapshot());
-  var p = sel; selectPart(null);
-  removePart(p); save(); vibrate(9);
+  var ps = selParts(); selectPart(null);
+  ps.forEach(removePart); save(); vibrate(9);
 });
 function reorient(p, mut){
   pushUndo(snapshot());
@@ -624,50 +673,100 @@ function collides(p){
   return false;
 }
 function nudgeY(dir){
-  if (!sel) return;
-  var p = sel;
+  if (!selIds.length) return;
+  var ps = selParts();
   var snap = snapshot();
-  remOcc(p);
-  var l0 = p.l;
-  var l = p.l + dir;
-  while (l >= 0 && l <= MAXH){
-    p.l = l;
-    if (!collides(p)) break;
-    l += dir;
-  }
-  if (l < 0 || l > MAXH){ p.l = l0; addOcc(p); return; }
-  addOcc(p); placeMesh(p);
+  ps.forEach(remOcc);
+  var l0 = ps.map(function(p){ return p.l; });
+  // מזיזים את כל הקבוצה יחד עד שאף חלק לא מתנגש
+  var step = 0, ok = true;
+  do {
+    step += dir;
+    ok = true;
+    for (var i=0;i<ps.length;i++){
+      var nl = l0[i] + step;
+      if (nl < 0 || nl > MAXH){ ok = false; break; }
+      ps[i].l = nl;
+    }
+    if (!ok) break;
+    var clash = ps.some(function(p){ return collides(p); });
+    if (!clash) break;
+  } while (Math.abs(step) < MAXH);
+  if (!ok){ ps.forEach(function(p,i){ p.l = l0[i]; }); ps.forEach(addOcc); return; }
+  ps.forEach(addOcc); ps.forEach(placeMesh);
   pushUndo(snap); save(); vibrate(6);
 }
 document.getElementById('btnUp').addEventListener('click', function(){ nudgeY(1); });
 document.getElementById('btnDown').addEventListener('click', function(){ nudgeY(-1); });
 
-/* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה */
+/* סיבוב קבוצה סביב מרכזה (yaw בלבד — שומר יישור רשת) */
+function groupYaw(){
+  var ps = selParts(); if (ps.length < 2) return;
+  pushUndo(snapshot());
+  ps.forEach(remOcc);
+  var cx = 0, cz = 0;
+  ps.forEach(function(p){ var f = fp(p); cx += p.x + f.w/2; cz += p.z + f.d/2; });
+  cx /= ps.length; cz /= ps.length;
+  ps.forEach(function(p){
+    var f = fp(p), pcx = p.x + f.w/2, pcz = p.z + f.d/2;
+    var dx = pcx - cx, dz = pcz - cz;
+    p.q = rotatedQuat(p, 'y', 1);
+    var nf = fp(p);
+    p.x = Math.round(cx - dz - nf.w/2);
+    p.z = Math.round(cz + dx - nf.d/2);
+  });
+  ps.forEach(function(p){
+    var f = fp(p);
+    p.x = Math.max(0, Math.min(BOARD - f.w, p.x));
+    p.z = Math.max(0, Math.min(BOARD - f.d, p.z));
+  });
+  ps.forEach(addOcc); ps.forEach(placeMesh); save(); vibrate(6);
+}
+/* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה (חלק בודד) */
 document.getElementById('btnRot').addEventListener('click', function(){
-  if (!sel) return;
-  reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
+  if (selIds.length > 1) groupYaw();
+  else if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
 });
 document.getElementById('btnPitch').addEventListener('click', function(){
-  if (!sel) return;
-  reorient(sel, function(p){ p.q = rotatedQuat(p, 'x', 1); });
+  if (selIds.length > 1){ toast('הטיה וגלגול פועלים על חלק בודד — בחרו חלק אחד'); return; }
+  if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'x', 1); });
 });
 document.getElementById('btnRoll').addEventListener('click', function(){
-  if (!sel) return;
-  reorient(sel, function(p){ p.q = rotatedQuat(p, 'z', 1); });
+  if (selIds.length > 1){ toast('הטיה וגלגול פועלים על חלק בודד — בחרו חלק אחד'); return; }
+  if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'z', 1); });
 });
 document.getElementById('btnDup').addEventListener('click', function(){
-  if (!sel) return;
+  if (!selIds.length) return;
   pushUndo(snapshot());
-  var np = {id:nextId++, t:sel.t, x:sel.x, z:sel.z, l:0, q:sel.q ? sel.q.slice() : null, c:sel.c};
-  np.l = heightAt(cellsOf(np));
-  if (np.l <= MAXH){ addPart(np); selectPart(np); save(); vibrate(9); }
+  var ps = selParts();
+  var minl = Math.min.apply(null, ps.map(function(p){ return p.l; }));
+  // מרימים את העותקים מעל הגובה הקיים כדי שלא ייכנסו זה בזה
+  var lift = 0;
+  ps.forEach(function(p){ lift = Math.max(lift, heightAt(cellsOf(p), p.id) - minl); });
+  var copies = [];
+  ps.forEach(function(p){
+    var np = {id:nextId++, t:p.t, x:p.x, z:p.z, l:p.l + lift, q:p.q ? p.q.slice() : null, c:p.c};
+    if (np.l <= MAXH){ addPart(np); copies.push(np.id); }
+  });
+  selIds = copies; afterSel(); save(); vibrate(9);
 });
 document.getElementById('btnPaint').addEventListener('click', function(){
-  if (!sel) return;
+  if (!selIds.length) return;
   pushUndo(snapshot());
-  sel.c = curColor;
-  var p = sel; selectPart(null); selectPart(p); // רענון חומר
-  save();
+  selParts().forEach(function(p){ p.c = curColor; });
+  applySelVisual(); save();
+});
+document.getElementById('btnMulti').addEventListener('click', function(){
+  multiMode = !multiMode;
+  this.classList.toggle('active', multiMode);
+  toast(multiMode ? 'בחירה מרובה — הקישו על חלקים להוסיף/להסיר' : 'בחירה מרובה כבויה');
+});
+document.getElementById('btnSaveSub').addEventListener('click', function(){
+  if (selIds.length < 1){ toast('בחרו חלקים (בחר עוד ➕) ואז שמרו כמודול'); return; }
+  var panel = document.getElementById('subPanel');
+  panel.hidden = false;
+  var inp = document.getElementById('subName');
+  inp.value = ''; inp.focus();
 });
 
 /* ---------- פלטות UI ---------- */
@@ -681,9 +780,10 @@ COLORS.forEach(function(c){
     curColor = c;
     Array.from(colorsEl.children).forEach(function(el){ el.classList.remove('on'); });
     b.classList.add('on');
-    if (sel){
+    if (selIds.length){
       pushUndo(snapshot());
-      sel.c = c; var p = sel; selectPart(null); selectPart(p); save();
+      selParts().forEach(function(p){ p.c = c; });
+      applySelVisual(); save();
     }
   });
   colorsEl.appendChild(b);
@@ -691,24 +791,30 @@ COLORS.forEach(function(c){
 
 var partsEl = document.getElementById('parts');
 var catsEl = document.getElementById('cats');
-var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['g','גלגלי שיניים'],['c','קטלוג ⬇']];
+var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['g','גלגלי שיניים'],['m','מודולים 🧩'],['c','קטלוג ⬇']];
 var curCat = 'b';
+function armedLabel(){
+  if (!armed) return '';
+  if (armed.indexOf('sub:') === 0){ var s = getSubs()[+armed.slice(4)]; return s ? 'מניח מודול: ' + s.name : ''; }
+  return TYPES[armed] ? 'מניח: ' + TYPES[armed].n + ' · לחיצה ארוכה בוחרת חלק' : '';
+}
 function syncPalette(){
   Array.from(partsEl.children).forEach(function(el){
-    el.classList.toggle('on', el.dataset.t === armed);
-    el.style.display = (PD.parts[el.dataset.t].cat === curCat) ? '' : 'none';
+    if (el.dataset.sub !== undefined){
+      el.classList.toggle('on', armed === 'sub:' + el.dataset.sub);
+      el.style.display = (curCat === 'm') ? '' : 'none';
+    } else {
+      el.classList.toggle('on', el.dataset.t === armed);
+      el.style.display = (PD.parts[el.dataset.t].cat === curCat) ? '' : 'none';
+    }
   });
   Array.from(catsEl.children).forEach(function(el){
     el.classList.toggle('on', el.dataset.c === curCat);
   });
-  // סרגל מצב: מה מניחים עכשיו
   var bar = document.getElementById('armedBar');
-  if (armed){
-    document.getElementById('armedName').textContent = 'מניח: ' + TYPES[armed].n + ' · לחיצה ארוכה בוחרת חלק';
-    bar.classList.add('on');
-  } else {
-    bar.classList.remove('on');
-  }
+  var lbl = armedLabel();
+  if (lbl){ document.getElementById('armedName').textContent = lbl; bar.classList.add('on'); }
+  else bar.classList.remove('on');
 }
 document.getElementById('btnDockMin').addEventListener('click', function(){
   var dock = document.getElementById('dock');
@@ -768,6 +874,37 @@ function makeChip(t){
   partsEl.appendChild(chip);
 }
 TYPE_ORDER.forEach(makeChip);
+/* צ'יפים של תת־מודלים שמורים */
+function buildSubChips(){
+  Array.from(partsEl.querySelectorAll('.chip[data-sub]')).forEach(function(el){ el.remove(); });
+  getSubs().forEach(function(sub, idx){
+    var chip = document.createElement('div');
+    chip.className = 'chip subchip';
+    chip.dataset.sub = idx;
+    var ic = document.createElement('div');
+    ic.className = 'gearIcon'; ic.textContent = '🧩';
+    var lbl = document.createElement('small');
+    lbl.textContent = sub.name + ' (' + sub.parts.length + ')';
+    lbl.dir = 'auto';
+    var del = document.createElement('button');
+    del.className = 'subDel'; del.textContent = '✕'; del.title = 'מחק מודול';
+    del.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var subs = getSubs(); subs.splice(idx, 1); setSubs(subs); buildSubChips();
+      if (armed === 'sub:' + idx) armed = null;
+      syncPalette();
+    });
+    chip.appendChild(ic); chip.appendChild(lbl); chip.appendChild(del);
+    chip.addEventListener('click', function(){
+      var key = 'sub:' + idx;
+      armed = (armed === key) ? null : key;
+      if (armed) selectPart(null);
+      syncPalette();
+    });
+    partsEl.appendChild(chip);
+  });
+}
+buildSubChips();
 syncPalette();
 
 /* ---------- קטלוג מלא: חיפוש וטעינה מהרשת ----------
@@ -1018,6 +1155,146 @@ function refreshSnapViz(){
 }
 window.__snapCount = function(){ return snapGroup.children.length; };
 
+/* ---------- מנוע חיבור מבוסס נקודות (shadow data) ---------- */
+/* מיקום וכיוון החלק ללא צורך ב-mesh — משכפל את חישוב placeMesh */
+function partPose(p){
+  var rd = rotDims(p);
+  var padX = (rd.fw - rd.sx) / 2, padZ = (rd.fd - rd.sz) / 2;
+  return {
+    pos: new THREE.Vector3(p.x + OFF + padX - rd.mn[0], p.l * LU - rd.mn[1], p.z + OFF + padZ - rd.mn[2]),
+    q: quatOf(p)
+  };
+}
+function worldSnaps(p){
+  var pose = partPose(p);
+  return (PD.parts[p.t].s || []).map(function(s){
+    return {g:s.g, r:s.r, v:new THREE.Vector3(s.p[0], s.p[1], s.p[2]).applyQuaternion(pose.q).add(pose.pos)};
+  });
+}
+/* נקודות בהן חיבור זכר של חלק אחד פוגש נקבה של חלק אחר (או להפך) */
+function findMates(movingParts){
+  var movingIds = {};
+  movingParts.forEach(function(p){ movingIds[p.id] = true; });
+  var moving = [];
+  movingParts.forEach(function(p){ worldSnaps(p).forEach(function(s){ moving.push(s); }); });
+  var statics = [];
+  parts.forEach(function(p){
+    if (movingIds[p.id]) return;
+    worldSnaps(p).forEach(function(s){ statics.push(s); });
+  });
+  var mates = [];
+  moving.forEach(function(a){
+    statics.forEach(function(b){
+      if (a.g === b.g) return;                       // זכר מתחבר לנקבה בלבד
+      if (Math.abs(a.r - b.r) > 1.5) return;          // קטרים תואמים
+      if (a.v.distanceTo(b.v) < 0.22){
+        mates.push(a.v.clone().lerp(b.v, 0.5));
+      }
+    });
+  });
+  return mates;
+}
+function countMates(movingParts){ return findMates(movingParts).length; }
+
+/* גובה החיבור: בוחר את השכבה שבה נוצרים הכי הרבה חיבורים סביב גובה הישיבה הטבעי */
+function connectLayer(p){
+  var base = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+  var best = base, bestScore = -1;
+  for (var d = -2; d <= 2; d++){
+    var l = base + d;
+    if (l < 0 || l > MAXH) continue;
+    p.l = l;
+    if (collides(p)) continue;
+    var m = countMates([p]);
+    var score = m * 10 - Math.abs(d);   // מעדיף חיבור, בתיקו — קרוב לגובה הטבעי
+    if (score > bestScore){ bestScore = score; best = l; }
+  }
+  p.l = best;
+  return best;
+}
+
+/* תצוגה חיה של נקודות החיבור בזמן גרירה */
+var mateGroup = new THREE.Group();
+scene.add(mateGroup);
+var mateGeo = new THREE.SphereGeometry(0.2, 12, 10);
+var mateMat = new THREE.MeshBasicMaterial({color:0x22e06a, depthTest:false, transparent:true, opacity:0.95});
+function clearMateViz(){ mateGroup.clear(); }
+function showMateViz(movingParts){
+  mateGroup.clear();
+  findMates(movingParts).forEach(function(v){
+    var mk = new THREE.Mesh(mateGeo, mateMat);
+    mk.position.copy(v); mk.renderOrder = 1000;
+    mateGroup.add(mk);
+  });
+}
+window.__mateCount = function(){ return mateGroup.children.length; };
+window.__mateTest = function(){
+  // בדיקה: שתי לבנים 2×4, אחת על השנייה
+  var a = {id:90001, t:'3001', x:5, z:5, l:0, q:null, c:'#c91a09'};
+  var b = {id:90002, t:'3001', x:5, z:5, l:6, q:null, c:'#0055bf'};
+  addPart(a); addPart(b);
+  var sa = worldSnaps(a).map(function(s){ return s.g + '@' + s.v.x.toFixed(2) + ',' + s.v.y.toFixed(2) + ',' + s.v.z.toFixed(2); });
+  var sb = worldSnaps(b).map(function(s){ return s.g + '@' + s.v.x.toFixed(2) + ',' + s.v.y.toFixed(2) + ',' + s.v.z.toFixed(2); });
+  var m = countMates([b]);
+  var res = 'mates=' + m + ' | A: ' + sa.slice(0,3).join(' ') + ' | B: ' + sb.slice(0,3).join(' ');
+  removePart(a); removePart(b);
+  return res;
+};
+
+/* ---------- תת־מודלים (מודולים) ---------- */
+function subKey(){ return 'bb-sub-' + (curUser || 'אורח'); }
+function getSubs(){ try { return JSON.parse(localStorage.getItem(subKey()) || '[]'); } catch(e){ return []; } }
+function setSubs(a){ try { localStorage.setItem(subKey(), JSON.stringify(a)); } catch(e){} }
+function saveSubModel(name){
+  var ps = selParts(); if (!ps.length) return;
+  var minx = Math.min.apply(null, ps.map(function(p){ return p.x; }));
+  var minz = Math.min.apply(null, ps.map(function(p){ return p.z; }));
+  var minl = Math.min.apply(null, ps.map(function(p){ return p.l; }));
+  var data = ps.map(function(p){
+    return {t:p.t, dx:p.x - minx, dz:p.z - minz, dl:p.l - minl, q:p.q ? p.q.slice() : null, c:p.c};
+  });
+  var subs = getSubs();
+  subs.push({name:name, parts:data});
+  setSubs(subs);
+  buildSubChips();
+  toast('נשמר מודול "' + name + '" · זמין בטאב מודולים 🧩');
+}
+function subFootprint(sub){
+  var w = 1, d = 1;
+  sub.parts.forEach(function(sp){
+    var f = fp({t:sp.t, q:sp.q});
+    w = Math.max(w, sp.dx + f.w);
+    d = Math.max(d, sp.dz + f.d);
+  });
+  return {w:w, d:d};
+}
+function placeSub(sub, px, pz){
+  var fpr = subFootprint(sub);
+  var ax = Math.max(0, Math.min(BOARD - fpr.w, Math.round(px - OFF - fpr.w/2)));
+  var az = Math.max(0, Math.min(BOARD - fpr.d, Math.round(pz - OFF - fpr.d/2)));
+  // גובה בסיס: מעל הגבוה ביותר בטביעת הרגל של כל המודול
+  var baseCells = [];
+  for (var i=0;i<fpr.w;i++) for (var j=0;j<fpr.d;j++) baseCells.push((ax+i) + ',' + (az+j));
+  var base = heightAt(baseCells);
+  pushUndo(snapshot());
+  var newIds = [];
+  sub.parts.forEach(function(sp){
+    var np = {id:nextId++, t:sp.t, x:ax + sp.dx, z:az + sp.dz, l:base + sp.dl, q:sp.q ? sp.q.slice() : null, c:sp.c};
+    if (TYPES[np.t] && np.l <= MAXH){ addPart(np); newIds.push(np.id); }
+  });
+  selIds = newIds; afterSel(); save(); vibrate(12);
+  toast('הונח המודול "' + sub.name + '"');
+}
+document.getElementById('btnSubSave').addEventListener('click', function(){
+  var n = document.getElementById('subName').value.trim();
+  if (!n) return;
+  document.getElementById('subPanel').hidden = true;
+  saveSubModel(n);
+});
+document.getElementById('btnSubClose').addEventListener('click', function(){
+  document.getElementById('subPanel').hidden = true;
+});
+
 /* ---------- קינמטיקה: הנעת גלגלי שיניים ----------
    גלגלים משתלבים כשהמרחק בין הצירים שווה לסכום רדיוסי הפיץ' (שיניים/16 ביחידות בליטה).
    BFS על גרף ההשתלבות מפיץ יחס תמסורת (-Na/Nb) ופאזה שמשלבת שן-מול-מרווח. */
@@ -1077,6 +1354,7 @@ function switchUser(name){
   try { localStorage.setItem('bb-user', name); } catch(e){}
   syncUserBtn();
   undoStack = []; redoStack = [];
+  buildSubChips();
   if (!load()) setModel([]); // משתמש חדש מתחיל בלוח נקי
 }
 var toastTimer = null;
