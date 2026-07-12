@@ -320,6 +320,8 @@ function afterSel(){
   var mb = document.getElementById('btnMulti');
   if (mb) mb.classList.toggle('active', multiMode);
   if (!has){ var cp = document.getElementById('colorPop'); if (cp) cp.hidden = true; }
+  srcConnIdx = null;
+  if (snapViz) refreshSnapViz();
 }
 function selectPart(p){ selIds = p ? [p.id] : []; if (!p) multiMode = false; afterSel(); }
 function toggleSelect(p){
@@ -629,10 +631,20 @@ function pointerEnd(e){
   }
 
   if (mode === 'maybe'){
-    // מצב חיבור: יש חלק חמוש/נבחר ונגעו ליד נקודת חיבור → הצמדה
+    // מצב חיבור: חיבור דו-נקודתי (בחירת מקור על החלק הנבחר ואז יעד) או אוטומטי
     if (snapViz && !multiMode && (armed && armed.indexOf('sub:') !== 0 || sel)){
+      // כשיש חלק נבחר: נגיעה על נקודה שלו עצמו = בחירת נקודת מקור
+      if (sel && !armed){
+        var si = pickSourceConnector(e.clientX, e.clientY);
+        var T0 = pickTargetConnector(e.clientX, e.clientY);
+        // אם קרוב יותר לנקודת מקור מאשר ליעד — בוחרים מקור
+        if (si != null && !T0){
+          srcConnIdx = si; refreshSnapViz(); vibrate(8);
+          toast('נקודת מקור נבחרה · געו בנקודת יעד לחיבור'); mode = 'idle'; return;
+        }
+      }
       var T = pickTargetConnector(e.clientX, e.clientY);
-      if (T && attachAtPoint(T)){ mode = 'idle'; return; }
+      if (T && attachAtPoint(T, srcConnIdx)){ srcConnIdx = null; refreshSnapViz(); mode = 'idle'; return; }
     }
     // הקשה רגילה
     if (armed && armed.indexOf('sub:') === 0){
@@ -797,8 +809,15 @@ function groupYaw(){
 }
 /* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה (חלק בודד) */
 document.getElementById('btnRot').addEventListener('click', function(){
-  if (selIds.length > 1) groupYaw();
-  else if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
+  if (selIds.length > 1){ groupYaw(); return; }
+  if (sel && sel.free && sel.aLocal){
+    // חלק מחובר: מסתובב סביב ציר החיבור, נקודת החיבור נשארת במקום
+    pushUndo(snapshot());
+    rotateAroundConn(sel, 45);
+    placeMesh(sel); save(); vibrate(6);
+    return;
+  }
+  if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
 });
 document.getElementById('btnPitch').addEventListener('click', function(){
   if (selIds.length > 1){ toast('הטיה וגלגול פועלים על חלק בודד — בחרו חלק אחד'); return; }
@@ -1241,6 +1260,8 @@ scene.add(snapGroup);
 var snapGeo = new THREE.SphereGeometry(0.14, 10, 8);
 var snapMatM = new THREE.MeshBasicMaterial({color:0x38bdf8, depthTest:false, transparent:true, opacity:0.95});
 var snapMatF = new THREE.MeshBasicMaterial({color:0xff7043, depthTest:false, transparent:true, opacity:0.95});
+var snapMatSrc = new THREE.MeshBasicMaterial({color:0xffffff, depthTest:false, transparent:true, opacity:0.98});   // מחבר-מקור על החלק הנבחר
+var snapMatPick = new THREE.MeshBasicMaterial({color:0x22e06a, depthTest:false, transparent:true, opacity:1});     // מקור שנבחר
 function refreshSnapViz(){
   snapGroup.clear();
   if (!snapViz) return;
@@ -1248,11 +1269,16 @@ function refreshSnapViz(){
     var mesh = meshes.get(p.id);
     if (!mesh) return;
     mesh.updateMatrixWorld(true);
-    (PD.parts[p.t].s || []).forEach(function(s){
+    var isSel = sel && p.id === sel.id;
+    (PD.parts[p.t].s || []).forEach(function(s, i){
       var v = new THREE.Vector3(s.p[0], s.p[1], s.p[2]);
       mesh.localToWorld(v);
-      var mk = new THREE.Mesh(snapGeo, s.g === 'M' ? snapMatM : snapMatF);
-      if (s.r !== 6) mk.scale.setScalar(0.5); // חיבורי משנה (צינורות/פינים)
+      // על החלק הנבחר: נקודות מקור (לבן), הנבחרת בירוק; אחרת יעד (כחול זכר / כתום נקבה)
+      var mat = isSel ? (srcConnIdx === i ? snapMatPick : snapMatSrc) : (s.g === 'M' ? snapMatM : snapMatF);
+      var mk = new THREE.Mesh(snapGeo, mat);
+      var sc = (s.r !== 6) ? 0.5 : 1;
+      if (isSel && srcConnIdx === i) sc *= 1.6;
+      mk.scale.setScalar(sc);
       mk.renderOrder = 999;
       mk.position.copy(v);
       snapGroup.add(mk);
@@ -1379,13 +1405,19 @@ function quatBetween(from, to){
   } else q.setFromUnitVectors(from, to);
   return q;
 }
-/* מחשב כיוון+מיקום כדי שהמחבר המתאים של החלק ייגע ביעד */
-function attachTransform(type, T, existing){
+/* מחשב כיוון+מיקום כדי שהמחבר של החלק ייגע ביעד.
+   srcIdx (אופציונלי) = אינדקס מחבר מקור מפורש; אחרת בוחר אוטומטית את התחתון המתאים. */
+function attachTransform(type, T, existing, srcIdx){
   var conns = PD.parts[type].s || [];
-  var cands = conns.filter(function(c){ return c.g !== T.g && Math.abs(c.r - T.r) <= 2.5; });
-  if (!cands.length) return null;
-  cands.sort(function(a, b){ return a.p[1] - b.p[1]; }); // המחבר התחתון ביותר (תחתית החלק / קצה הפין)
-  var c = cands[0];
+  var c;
+  if (srcIdx != null && conns[srcIdx] && conns[srcIdx].g !== T.g && Math.abs(conns[srcIdx].r - T.r) <= 2.5){
+    c = conns[srcIdx];
+  } else {
+    var cands = conns.filter(function(x){ return x.g !== T.g && Math.abs(x.r - T.r) <= 2.5; });
+    if (!cands.length) return null;
+    cands.sort(function(a, b){ return a.p[1] - b.p[1]; }); // התחתון ביותר (תחתית החלק / קצה הפין)
+    c = cands[0];
+  }
   var q0 = existing ? quatOf(existing) : new THREE.Quaternion();
   var cAxisW = new THREE.Vector3(c.a[0], c.a[1], c.a[2]).applyQuaternion(q0).normalize();
   var Taxis = T.a.clone().normalize();
@@ -1394,9 +1426,29 @@ function attachTransform(type, T, existing){
   var newQ = dq.clone().multiply(q0);
   var lp = new THREE.Vector3(c.p[0], c.p[1], c.p[2]).applyQuaternion(newQ);
   var newPos = T.v.clone().sub(lp);
-  return { q:[newQ.x, newQ.y, newQ.z, newQ.w], pos:[newPos.x, newPos.y, newPos.z] };
+  return {
+    q:[newQ.x, newQ.y, newQ.z, newQ.w],
+    pos:[newPos.x, newPos.y, newPos.z],
+    aLocal:[c.p[0], c.p[1], c.p[2]],       // נקודת החיבור במסגרת החלק (לסיבוב סביב הציר)
+    aAxisW:[Taxis.x, Taxis.y, Taxis.z]     // ציר החיבור בעולם
+  };
 }
-/* מוצא את נקודת החיבור הקרובה ביותר לנגיעה (במרחב המסך) */
+/* סיבוב חלק מחובר סביב ציר החיבור, כשנקודת החיבור נשארת קבועה */
+function rotateAroundConn(p, deg){
+  if (!p.aLocal || !p.aAxisW || !p.pos){ p.q = rotatedQuat(p, 'y', 1); placeMesh(p); return; }
+  var q = quatOf(p);
+  var pos = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]);
+  var anchor = new THREE.Vector3(p.aLocal[0], p.aLocal[1], p.aLocal[2]).applyQuaternion(q).add(pos);
+  var axis = new THREE.Vector3(p.aAxisW[0], p.aAxisW[1], p.aAxisW[2]).normalize();
+  var dq = new THREE.Quaternion().setFromAxisAngle(axis, deg * Math.PI / 180);
+  var nq = dq.clone().multiply(q);
+  var lp = new THREE.Vector3(p.aLocal[0], p.aLocal[1], p.aLocal[2]).applyQuaternion(nq);
+  var np = anchor.clone().sub(lp);
+  p.q = [nq.x, nq.y, nq.z, nq.w];
+  p.pos = [np.x, np.y, np.z];
+}
+var srcConnIdx = null;  // מחבר מקור נבחר (חיבור דו-נקודתי)
+/* נקודת חיבור קרובה ביותר לנגיעה, מבין החלקים שאינם הנבחר */
 function pickTargetConnector(cx, cy){
   var r = canvas.getBoundingClientRect();
   var best = null, bestD = 42, v = new THREE.Vector3();
@@ -1412,25 +1464,43 @@ function pickTargetConnector(cx, cy){
   });
   return best;
 }
+/* מחבר-מקור קרוב ביותר לנגיעה, על החלק הנבחר עצמו (אינדקס) */
+function pickSourceConnector(cx, cy){
+  if (!sel) return null;
+  var r = canvas.getBoundingClientRect();
+  var best = null, bestD = 42, v = new THREE.Vector3();
+  var ws = worldSnaps(sel);
+  ws.forEach(function(s, i){
+    v.copy(s.v).project(camera);
+    if (v.z > 1) return;
+    var sx = (v.x*0.5+0.5)*r.width + r.left, sy = (-v.y*0.5+0.5)*r.height + r.top;
+    var d = Math.hypot(sx - cx, sy - cy);
+    if (d < bestD){ bestD = d; best = i; }
+  });
+  return best;
+}
+function setConnMeta(p, res){ p.aLocal = res.aLocal; p.aAxisW = res.aAxisW; }
 /* מבצע חיבור: החלק החמוש/הנבחר נצמד לנקודה שנגעו בה */
-function attachAtPoint(T){
+function attachAtPoint(T, srcIdx){
   if (armed && armed.indexOf('sub:') !== 0 && TYPES[armed]){
-    var res = attachTransform(armed, T, null);
+    var res = attachTransform(armed, T, null, null);
     if (!res){ toast('החלק הזה לא מתאים לנקודה הזו'); return false; }
     pushUndo(snapshot());
     var np = {id:nextId++, t:armed, x:0, z:0, l:0, q:res.q, c:curColor, free:true, pos:res.pos};
+    setConnMeta(np, res);
     addPart(np); selectPart(np); save(); vibrate(12);
-    toast('🔗 חובר לנקודת החיבור');
+    toast('🔗 חובר · ⟳ מסובב סביב נקודת החיבור');
     return true;
   }
   if (sel){
-    var res2 = attachTransform(sel.t, T, sel);
+    var res2 = attachTransform(sel.t, T, sel, srcIdx);
     if (!res2){ toast('החלק לא מתאים לנקודה הזו'); return false; }
     pushUndo(snapshot());
     remOcc(sel);
     sel.free = true; sel.q = res2.q; sel.pos = res2.pos;
+    setConnMeta(sel, res2);
     placeMesh(sel); applySelVisual(); save(); vibrate(12);
-    toast('🔗 חובר');
+    toast('🔗 חובר · ⟳ מסובב סביב נקודת החיבור');
     return true;
   }
   return false;
@@ -1570,7 +1640,7 @@ document.getElementById('btnSnap').addEventListener('click', function(){
   this.classList.toggle('active', snapViz);
   refreshSnapViz();
   toast(snapViz
-    ? '🔗 מצב חיבור: בחרו חלק (מהפלטה או קיים) וגעו בנקודת חיבור (נקודה) כדי לחבר — פין↔חור, בליטה↔שקע'
+    ? '🔗 מצב חיבור: בחרו חלק, (אופציונלי) געו בנקודה לבנה שלו כמקור, ואז געו בנקודת יעד. ⟳ מסובב סביב החיבור'
     : 'מצב חיבור כבוי');
 });
 
@@ -1842,6 +1912,46 @@ window.__selCount = function(){ return selIds.length; };
 window.__board = function(){ return BOARD; };
 window.__spinNodes = function(){ return spinNodes ? spinNodes.length : 0; };
 window.__selFree = function(){ return sel ? !!sel.free : false; };
+window.__setupTwoPoint = function(){
+  return buildRemotePart('2780', 'Technic Pin').then(function(){
+    selectPart(null); parts.slice().forEach(removePart);
+    var brick = {id:nextId++, t:'3701', x:14, z:14, l:0, q:null, c:'#c91a09'}; addPart(brick);
+    // מניחים פין חופשי לצד הקורה ובוחרים אותו
+    var pin = {id:nextId++, t:'2780', free:true, q:[0,0,0,1], pos:[-2, 2, 0], c:'#1b2a34'};
+    addPart(pin); snapViz = true; document.getElementById('btnSnap').classList.add('active');
+    selectPart(pin); refreshSnapViz();
+    var r = canvas.getBoundingClientRect();
+    function scr(v){ var p = v.clone().project(camera); return [(p.x*0.5+0.5)*r.width+r.left, (-p.y*0.5+0.5)*r.height+r.top]; }
+    var conns = worldSnaps(pin);
+    var maleI = conns.findIndex(function(c){ return c.g === 'M'; });
+    var src = scr(conns[maleI].v);
+    var holes = worldSnaps(brick).filter(function(s){ return Math.abs(s.a.y) < 0.5; });
+    var tgt = scr((holes[1] || holes[0]).v);
+    // מסגרת מבט שמראה את שניהם
+    camTarget.set(0, 1, 0); camR = 16; updateCamera();
+    var src2 = scr(conns[maleI].v), tgt2 = scr((holes[1]||holes[0]).v);
+    return {src:src2, tgt:tgt2};
+  });
+};
+window.__connFeatureTest = function(){
+  return buildRemotePart('2780', 'Technic Pin').then(function(){
+    selectPart(null); parts.slice().forEach(removePart);
+    var brick = {id:nextId++, t:'3701', x:14, z:14, l:0, q:null, c:'#c91a09'}; addPart(brick);
+    var holes = worldSnaps(brick).filter(function(s){ return Math.abs(s.a.y) < 0.5; });
+    var T = holes[1] || holes[0];
+    var conns = PD.parts['2780'].s;
+    var maleIdx = conns.findIndex(function(c){ return c.g === 'M'; });
+    var res = attachTransform('2780', T, null, maleIdx);
+    if (!res) return 'attach-null';
+    var pin = {id:nextId++, t:'2780', free:true, q:res.q, pos:res.pos, c:'#1b2a34'};
+    setConnMeta(pin, res); addPart(pin); selectPart(pin);
+    function anchorOf(p){ return new THREE.Vector3(p.aLocal[0],p.aLocal[1],p.aLocal[2]).applyQuaternion(quatOf(p)).add(new THREE.Vector3(p.pos[0],p.pos[1],p.pos[2])); }
+    var before = anchorOf(pin), m0 = countMates([pin]);
+    rotateAroundConn(pin, 45); placeMesh(pin);
+    var after = anchorOf(pin), m1 = countMates([pin]);
+    return 'usedSrc=' + maleIdx + ' matesBefore=' + m0 + ' anchorDrift=' + before.distanceTo(after).toFixed(3) + ' matesAfterRotate=' + m1;
+  }).catch(function(e){ return 'ERR:' + e.message; });
+};
 window.__setupPinTap = function(){
   return buildRemotePart('2780', 'Technic Pin').then(function(){
     selectPart(null); parts.slice().forEach(removePart);
