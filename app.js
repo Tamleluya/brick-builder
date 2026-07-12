@@ -5,7 +5,7 @@
 /* ---------- קבועים ---------- */
 var LU = 0.2;            // יחידת גובה = חצי פלטה (מאפשר חלקים על הצד: לבנה שוכבת = 5 יחידות)
 var SR = 0.3, SH = 0.21; // רדיוס/גובה בליטה (stud)
-var BOARD = 24;          // לוח 24×24 בליטות
+var BOARD = 32;          // לוח 32×32 בליטות (הוגדל)
 var OFF = -BOARD / 2;    // מרכוז הלוח סביב ראשית הצירים
 var MAXH = 120;          // תקרת גובה בחצאי-פלטות
 
@@ -65,9 +65,9 @@ var sun = new THREE.DirectionalLight(0xfff4e0, 0.85);
 sun.position.set(14, 26, 9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -20; sun.shadow.camera.right = 20;
-sun.shadow.camera.top = 20; sun.shadow.camera.bottom = -20;
-sun.shadow.camera.far = 80;
+sun.shadow.camera.left = -26; sun.shadow.camera.right = 26;
+sun.shadow.camera.top = 26; sun.shadow.camera.bottom = -26;
+sun.shadow.camera.far = 90;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 
@@ -431,7 +431,7 @@ function castAt(cx, cy, excludeId){
 /* ---------- אינטראקציה ---------- */
 var ptrs = new Map();
 var mode = 'idle';       // idle | maybe | orbit | drag | pinch
-var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null, dragGroup=null;
+var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null, dragGroup=null, dragPreferL=0;
 var pinch = null;
 
 function vibrate(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
@@ -472,6 +472,37 @@ canvas.addEventListener('pointerdown', function(e){
 });
 var lpTimer = null, lpDone = false;
 var camLock = false, lockHinted = false;
+
+/* ---------- בחירת אזור (מלבן) במצב בחירה מרובה ---------- */
+var boxEl = document.getElementById('boxSel');
+var boxA = null, _pv = new THREE.Vector3();
+function startBox(x, y){ boxA = {x:x, y:y}; boxEl.style.display = 'block'; updateBox(x, y); }
+function updateBox(x, y){
+  if (!boxA) return;
+  boxEl.style.left = Math.min(boxA.x, x) + 'px';
+  boxEl.style.top = Math.min(boxA.y, y) + 'px';
+  boxEl.style.width = Math.abs(x - boxA.x) + 'px';
+  boxEl.style.height = Math.abs(y - boxA.y) + 'px';
+}
+function partScreen(p){
+  var f = fp(p);
+  _pv.set(p.x + f.w/2 + OFF, p.l * LU + 0.3, p.z + f.d/2 + OFF).project(camera);
+  var r = canvas.getBoundingClientRect();
+  return {x:(_pv.x*0.5+0.5)*r.width + r.left, y:(-_pv.y*0.5+0.5)*r.height + r.top};
+}
+function endBox(x, y){
+  boxEl.style.display = 'none';
+  if (!boxA) return;
+  var l = Math.min(boxA.x, x), r = Math.max(boxA.x, x), t = Math.min(boxA.y, y), b = Math.max(boxA.y, y);
+  boxA = null;
+  if (r - l < 6 && b - t < 6) return;
+  parts.forEach(function(p){
+    var s = partScreen(p);
+    if (s.x >= l && s.x <= r && s.y >= t && s.y <= b && selIds.indexOf(p.id) < 0) selIds.push(p.id);
+  });
+  afterSel();
+  if (selIds.length) toast('נבחרו ' + selIds.length + ' חלקים באזור');
+}
 document.getElementById('btnCam').addEventListener('click', function(){
   camLock = !camLock;
   this.classList.toggle('active', camLock);
@@ -516,7 +547,11 @@ canvas.addEventListener('pointermove', function(e){
           dragGroup = [hitPart];
         }
         dragOrig = dragGroup.map(function(p){ return {p:p, x:p.x, z:p.z, l:p.l}; });
+        dragPreferL = hitPart.l;   // שומר את הגובה הנוכחי (למשל אחרי הרמה) בזמן גרירה
         dragGroup.forEach(remOcc);
+      } else if (multiMode){
+        mode = 'box';
+        startBox(downX, downY);
       } else if (!camLock){
         mode = 'orbit';
       } else {
@@ -528,6 +563,11 @@ canvas.addEventListener('pointermove', function(e){
         }
       }
     } else return;
+  }
+
+  if (mode === 'box'){
+    updateBox(e.clientX, e.clientY);
+    return;
   }
 
   if (mode === 'orbit'){
@@ -549,8 +589,10 @@ canvas.addEventListener('pointermove', function(e){
       });
       dragGroup.forEach(function(p){ p.x += ddx; p.z += ddz; });
       if (dragGroup.length === 1){
-        // חלק בודד: מנוע חיבור בוחר את הגובה (הצמדה לבליטות/ישיבה על חלק אחר)
-        dragGroup[0].l = connectLayer(dragGroup[0]);
+        // שומרים על הגובה שנבחר (למשל אחרי הרמה); מושיבים מחדש רק אם יש התנגשות
+        var p = dragGroup[0];
+        p.l = dragPreferL;
+        if (collides(p)) p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
       }
       dragGroup.forEach(placeMesh);
       showMateViz(dragGroup);
@@ -563,6 +605,12 @@ function pointerEnd(e){
   ptrs.delete(e.pointerId);
   clearTimeout(lpTimer);
   if (lpDone){ lpDone = false; mode = 'idle'; return; }
+
+  if (mode === 'box'){
+    endBox(e.clientX, e.clientY);
+    mode = 'idle';
+    return;
+  }
 
   if (mode === 'pinch'){
     if (ptrs.size < 2){ mode = 'idle'; pinch = null; }
@@ -626,21 +674,13 @@ canvas.addEventListener('wheel', function(e){
 /* ---------- כפתורים ---------- */
 document.getElementById('btnUndo').addEventListener('click', undo);
 document.getElementById('btnRedo').addEventListener('click', redo);
-/* אישור בהקשה כפולה — confirm() חסום בחלק מהסביבות */
-var clearArmedAt = 0;
+/* מחיקה מיידית — הביטול (↩) מחזיר, אז אין צורך באישור */
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!parts.length) return;
-  var now = performance.now();
-  if (now - clearArmedAt > 2600){
-    clearArmedAt = now;
-    toast('בטוחים? הקשה נוספת על 🗑 תמחק את כל הדגם');
-    return;
-  }
-  clearArmedAt = 0;
   pushUndo(snapshot());
   selectPart(null);
   parts = []; rebuildAll(); save();
-  toast('הדגם נמחק — אפשר להתחרט עם ↩');
+  toast('הדגם נמחק — ↩ לביטול');
 });
 document.getElementById('btnDel').addEventListener('click', function(){
   if (!selIds.length) return;
@@ -759,7 +799,7 @@ document.getElementById('btnPaint').addEventListener('click', function(){
 document.getElementById('btnMulti').addEventListener('click', function(){
   multiMode = !multiMode;
   this.classList.toggle('active', multiMode);
-  toast(multiMode ? 'בחירה מרובה — הקישו על חלקים להוסיף/להסיר' : 'בחירה מרובה כבויה');
+  toast(multiMode ? 'בחירה מרובה — הקישו על חלקים, או גררו על הרקע לבחירת אזור' : 'בחירה מרובה כבויה');
 });
 document.getElementById('btnSaveSub').addEventListener('click', function(){
   if (selIds.length < 1){ toast('בחרו חלקים (בחר עוד ➕) ואז שמרו כמודול'); return; }
@@ -1301,7 +1341,11 @@ document.getElementById('btnSubClose').addEventListener('click', function(){
 var spinOn = false, spinNodes = null, spinA = 0;
 function gearCenter(p){ var f = fp(p); return {x: p.x + f.w/2, z: p.z + f.d/2}; }
 function buildSpin(){
-  var nodes = parts.filter(function(p){ return PD.parts[p.t].teeth && upOf(p).y > 0.99; }).map(function(p){
+  var pool = parts.filter(function(p){ return PD.parts[p.t].teeth && upOf(p).y > 0.99; });
+  // אם יש בחירה — מניעים רק את הגלגלים הנבחרים
+  var selGears = selParts().filter(function(p){ return PD.parts[p.t].teeth; });
+  if (selGears.length) pool = selGears.filter(function(p){ return upOf(p).y > 0.99; });
+  var nodes = pool.map(function(p){
     var n = PD.parts[p.t].teeth;
     return {p: p, c: gearCenter(p), n: n, r: n/16, ratio: 0, phase: 0, seen: false};
   });
@@ -1314,9 +1358,9 @@ function buildSpin(){
     while (q.length){
       var a = q.shift();
       nodes.forEach(function(b){
-        if (b.seen || b.p.l !== a.p.l) return;
+        if (b.seen || Math.abs(b.p.l - a.p.l) > 2) return;   // אותה שכבה (סבולת לחצאי-פלטה)
         var dx = b.c.x - a.c.x, dz = b.c.z - a.c.z;
-        if (Math.abs(Math.hypot(dx, dz) - (a.r + b.r)) > 0.1) return;
+        if (Math.abs(Math.hypot(dx, dz) - (a.r + b.r)) > 0.34) return; // סבולת רחבה יותר להשתלבות
         var phi = Math.atan2(dx, dz);
         var k = a.n / b.n;
         b.ratio = -k * a.ratio;
@@ -1554,7 +1598,7 @@ window.addEventListener('resize', resize);
 function fitCamera(){
   // במסך צר (טלפון) מרחיקים את המצלמה כדי שכל הלוח ייכנס
   var aspect = (window.innerWidth || 1) / (window.innerHeight || 1);
-  camR = aspect < 0.8 ? 42 : 30;
+  camR = aspect < 0.8 ? 56 : 42;
 }
 
 function tick(ts){
@@ -1586,6 +1630,7 @@ curUser = localStorage.getItem('bb-user') || 'אורח';
 try { localStorage.setItem('bb-user', curUser); } catch(e){}
 if (getUsers().indexOf(curUser) < 0) setUsers(getUsers().concat([curUser]));
 syncUserBtn();
+buildSubChips();  // טעינת המודולים השמורים של המשתמש הנוכחי
 var sharedModel = readHashModel();
 if (sharedModel){
   // דגם משותף נטען למשתמש ייעודי כדי לא לדרוס דגמים של אף אחד
@@ -1605,6 +1650,11 @@ requestAnimationFrame(tick);
 window.__ready = true;
 window.__partCount = function(){ return parts.length; };
 window.__selQ = function(){ return sel ? (sel.q || null) : null; };
+window.__selL = function(){ return sel ? sel.l : -1; };
+window.__selColor = function(){ return sel ? sel.c : ''; };
+window.__selCount = function(){ return selIds.length; };
+window.__board = function(){ return BOARD; };
+window.__spinNodes = function(){ return spinNodes ? spinNodes.length : 0; };
 window.__hitTest = function(x, y){
   var h = castAt(x, y);
   return h ? (h.part ? 'part:' + h.part.id : 'ground@' + Math.round(h.point.x) + ',' + Math.round(h.point.z)) : 'none';

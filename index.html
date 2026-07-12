@@ -110,14 +110,20 @@
   .galThumb{display:block;width:100%;height:88px;object-fit:cover;background:#cfe0ec;cursor:pointer;}
   .galNm{padding:6px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
+  #boxSel{
+    position:fixed;display:none;z-index:11;pointer-events:none;
+    border:2px dashed var(--accent);background:rgba(246,196,69,.14);border-radius:4px;
+  }
   .subchip{position:relative;}
   .subDel{
     position:absolute;top:-6px;left:-6px;width:18px;height:18px;border:0;border-radius:50%;
     background:var(--danger);color:#fff;font-size:10px;line-height:1;cursor:pointer;padding:0;
   }
-  /* כשחלק נבחר: הפלטה מתקפלת ותפריט הפעולות יורד למקומה */
-  body.hasSel .dock{display:none;}
-  body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 14px);}
+  /* כשחלק נבחר: הפלטה מצטמצמת לשורת הצבעים בלבד (כדי שאפשר לצבוע), התפריט יורד מעליה */
+  body.hasSel .cats, body.hasSel .parts, body.hasSel .dockMin{display:none;}
+  body.hasSel .dock{padding:9px 10px;}
+  body.hasSel .dock::before{content:'בחרו צבע כדי לצבוע את הבחירה';display:block;text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:4px;}
+  body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 66px);}
   .dockMin{
     position:absolute;top:-13px;right:14px;
     border:0;cursor:pointer;background:var(--panel);color:var(--muted);
@@ -221,6 +227,8 @@
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
 </div>
+
+<div id="boxSel"></div>
 
 <div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · ➕ בחר עוד לקבוצה · 🧩 שומר מודול · 🔩 מציג נקודות חיבור · ▶ מניע גלגלים</div>
 
