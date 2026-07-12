@@ -110,6 +110,26 @@
   .galThumb{display:block;width:100%;height:88px;object-fit:cover;background:#cfe0ec;cursor:pointer;}
   .galNm{padding:6px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
+  .movepad{
+    position:fixed;top:calc(env(safe-area-inset-top,0px) + 62px);left:12px;z-index:12;
+    display:grid;grid-template-columns:repeat(4,40px);grid-template-rows:repeat(3,40px);
+    gap:5px;padding:9px;direction:ltr;
+  }
+  .movepad[hidden]{display:none;}
+  .mvb{
+    border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:10px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
+    -webkit-user-select:none;user-select:none;touch-action:none;
+  }
+  .mvb:active{background:var(--accent);color:var(--accent-ink);transform:scale(.94);}
+  .mvhub{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;}
+  .mvb[data-dir="fwd"]{grid-area:1/2}
+  .mvhub{grid-area:2/2}
+  .mvb[data-dir="left"]{grid-area:2/1}
+  .mvb[data-dir="right"]{grid-area:2/3}
+  .mvb[data-dir="back"]{grid-area:3/2}
+  .mvb.up{grid-area:1/4;background:rgba(246,196,69,.16);}
+  .mvb.dn{grid-area:3/4;background:rgba(246,196,69,.16);}
   #boxSel{
     position:fixed;display:none;z-index:11;pointer-events:none;
     border:2px dashed var(--accent);background:rgba(246,196,69,.14);border-radius:4px;
@@ -228,15 +248,25 @@
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
   <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
-  <button class="tbtn" id="btnSnap" title="מצב חיבור — גע בנקודת חיבור">🔗</button>
+  <button class="tbtn" id="btnMove" title="שלט הזזה עדינה">✥</button>
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
 </div>
 
+<div class="movepad pill" id="movePad" hidden>
+  <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
+  <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
+  <span class="mvhub">✥</span>
+  <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
+  <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
+  <button class="mvb up" data-dir="up" aria-label="הרם">⤒</button>
+  <button class="mvb dn" data-dir="down" aria-label="הורד">⤓</button>
+</div>
+
 <div id="boxSel"></div>
 
-<div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · 🔗 מצב חיבור: בחר חלק וגע בנקודת חיבור · 🧩 שומר מודול · ▶ מניע גלגלים</div>
+<div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · בחר חלק ו-✥ פותח שלט הזזה עדינה (חלק על חלק) · 🧩 שומר מודול · ▶ מניע גלגלים</div>
 
 <div class="colorPop pill" id="colorPop" hidden>
   <div class="colors" id="popColors"></div>

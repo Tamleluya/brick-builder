@@ -322,6 +322,7 @@ function afterSel(){
   if (!has){ var cp = document.getElementById('colorPop'); if (cp) cp.hidden = true; }
   srcConnIdx = null;
   if (snapViz) refreshSnapViz();
+  updateMovePad();
 }
 function selectPart(p){ selIds = p ? [p.id] : []; if (!p) multiMode = false; afterSel(); }
 function toggleSelect(p){
@@ -608,7 +609,6 @@ canvas.addEventListener('pointermove', function(e){
         if (collides(p)) p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
       }
       dragGroup.forEach(placeMesh);
-      showMateViz(dragGroup);
     }
   }
 });
@@ -631,21 +631,6 @@ function pointerEnd(e){
   }
 
   if (mode === 'maybe'){
-    // מצב חיבור: חיבור דו-נקודתי (בחירת מקור על החלק הנבחר ואז יעד) או אוטומטי
-    if (snapViz && !multiMode && (armed && armed.indexOf('sub:') !== 0 || sel)){
-      // כשיש חלק נבחר: נגיעה על נקודה שלו עצמו = בחירת נקודת מקור
-      if (sel && !armed){
-        var si = pickSourceConnector(e.clientX, e.clientY);
-        var T0 = pickTargetConnector(e.clientX, e.clientY);
-        // אם קרוב יותר לנקודת מקור מאשר ליעד — בוחרים מקור
-        if (si != null && !T0){
-          srcConnIdx = si; refreshSnapViz(); vibrate(8);
-          toast('נקודת מקור נבחרה · געו בנקודת יעד לחיבור'); mode = 'idle'; return;
-        }
-      }
-      var T = pickTargetConnector(e.clientX, e.clientY);
-      if (T && attachAtPoint(T, srcConnIdx)){ srcConnIdx = null; refreshSnapViz(); mode = 'idle'; return; }
-    }
     // הקשה רגילה
     if (armed && armed.indexOf('sub:') === 0){
       var hitS = castAt(e.clientX, e.clientY);
@@ -674,10 +659,7 @@ function pointerEnd(e){
     var moved = dragOrig && dragOrig.some(function(o){ return o.x !== o.p.x || o.z !== o.p.z || o.l !== o.p.l; });
     if (moved){
       pushUndo(dragSnap); save(); vibrate(9);
-      var mates = countMates(dragGroup);
-      if (mates) toast('🔗 התחבר · ' + mates + ' נקודות חיבור');
     }
-    clearMateViz();
     dragSnap = null; dragOrig = null; dragGroup = null;
   }
   mode = 'idle';
@@ -1635,13 +1617,60 @@ document.getElementById('btnPlay').addEventListener('click', function(){
     parts.forEach(function(p){ placeMesh(p); });
   }
 });
-document.getElementById('btnSnap').addEventListener('click', function(){
-  snapViz = !snapViz;
-  this.classList.toggle('active', snapViz);
-  refreshSnapViz();
-  toast(snapViz
-    ? '🔗 מצב חיבור: בחרו חלק, (אופציונלי) געו בנקודה לבנה שלו כמקור, ואז געו בנקודת יעד. ⟳ מסובב סביב החיבור'
-    : 'מצב חיבור כבוי');
+/* ---------- שלט הזזה עדינה ---------- */
+var FINE = 0.1;   // צעד עדין ≈ 0.1 בליטה
+var moveOn = false;
+function updateMovePad(){
+  document.getElementById('movePad').hidden = !(moveOn && selIds.length);
+}
+document.getElementById('btnMove').addEventListener('click', function(){
+  moveOn = !moveOn;
+  this.classList.toggle('active', moveOn);
+  updateMovePad();
+  toast(moveOn
+    ? '✥ שלט הזזה: בחרו חלק והזיזו אותו בצעדים קטנים לכל כיוון (מאפשר הנחה חלק על חלק)'
+    : 'שלט הזזה כבוי');
+});
+/* כיווני תנועה יחסית למצלמה (במישור הלוח) */
+function camDirs(){
+  var f = new THREE.Vector3(-Math.sin(camTheta), 0, -Math.cos(camTheta)).normalize();
+  var rt = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0)).normalize();
+  return {f:f, rt:rt};
+}
+function moveSelBy(v){
+  var ps = selParts(); if (!ps.length) return;
+  ps.forEach(function(p){
+    if (!p.free){ remOcc(p); p.free = true; p.pos = gridPos(p).toArray(); }
+    p.pos[0] += v.x; p.pos[1] += v.y; p.pos[2] += v.z;
+    placeMesh(p);
+  });
+}
+function dirVec(dir){
+  var d = camDirs();
+  if (dir === 'fwd') return d.f.clone().multiplyScalar(FINE);
+  if (dir === 'back') return d.f.clone().multiplyScalar(-FINE);
+  if (dir === 'right') return d.rt.clone().multiplyScalar(FINE);
+  if (dir === 'left') return d.rt.clone().multiplyScalar(-FINE);
+  if (dir === 'up') return new THREE.Vector3(0, FINE, 0);
+  if (dir === 'down') return new THREE.Vector3(0, -FINE, 0);
+  return new THREE.Vector3();
+}
+Array.prototype.forEach.call(document.querySelectorAll('.mvb'), function(btn){
+  var iv = null, active = false;
+  var dir = btn.getAttribute('data-dir');
+  function step(){ moveSelBy(dirVec(dir)); }
+  function start(e){
+    e.preventDefault();
+    if (!selIds.length){ toast('בחרו חלק תחילה'); return; }
+    pushUndo(snapshot());
+    active = true; step();
+    iv = setInterval(step, 90);   // החזקה = תנועה רציפה
+  }
+  function stop(){ if (iv){ clearInterval(iv); iv = null; } if (active){ active = false; save(); vibrate(3); } }
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', stop);
+  btn.addEventListener('pointerleave', stop);
+  btn.addEventListener('pointercancel', stop);
 });
 
 /* ---------- משתמשים ושיתוף ---------- */
@@ -1912,6 +1941,7 @@ window.__selCount = function(){ return selIds.length; };
 window.__board = function(){ return BOARD; };
 window.__spinNodes = function(){ return spinNodes ? spinNodes.length : 0; };
 window.__selFree = function(){ return sel ? !!sel.free : false; };
+window.__selectFirst = function(){ if (parts.length) selectPart(parts[parts.length-1]); return selIds.length; };
 window.__setupTwoPoint = function(){
   return buildRemotePart('2780', 'Technic Pin').then(function(){
     selectPart(null); parts.slice().forEach(removePart);
