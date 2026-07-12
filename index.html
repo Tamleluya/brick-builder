@@ -119,11 +119,17 @@
     position:absolute;top:-6px;left:-6px;width:18px;height:18px;border:0;border-radius:50%;
     background:var(--danger);color:#fff;font-size:10px;line-height:1;cursor:pointer;padding:0;
   }
-  /* כשחלק נבחר: הפלטה מצטמצמת לשורת הצבעים בלבד (כדי שאפשר לצבוע), התפריט יורד מעליה */
-  body.hasSel .cats, body.hasSel .parts, body.hasSel .dockMin{display:none;}
-  body.hasSel .dock{padding:9px 10px;}
-  body.hasSel .dock::before{content:'בחרו צבע כדי לצבוע את הבחירה';display:block;text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:4px;}
-  body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 66px);}
+  /* כשחלק נבחר: הפלטה מתקפלת ותפריט הפעולות יורד למקומה */
+  body.hasSel .dock{display:none;}
+  body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 14px);}
+  /* תפריט צבע נפתח (מעל תפריט הפעולות) */
+  .colorPop{
+    position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 118px);
+    right:50%;transform:translateX(50%);z-index:12;padding:10px 12px;
+  }
+  .colorPop[hidden]{display:none;}
+  .colorPop .colors{gap:11px;}
+  .colorPop .sw{width:30px;height:30px;min-width:30px;}
   .dockMin{
     position:absolute;top:-13px;right:14px;
     border:0;cursor:pointer;background:var(--panel);color:var(--muted);
@@ -222,7 +228,7 @@
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
   <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
-  <button class="tbtn" id="btnSnap" title="נקודות חיבור">🔩</button>
+  <button class="tbtn" id="btnSnap" title="הצמדה מגנטית לנקודות חיבור">🧲</button>
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
@@ -231,6 +237,10 @@
 <div id="boxSel"></div>
 
 <div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · ➕ בחר עוד לקבוצה · 🧩 שומר מודול · 🔩 מציג נקודות חיבור · ▶ מניע גלגלים</div>
+
+<div class="colorPop pill" id="colorPop" hidden>
+  <div class="colors" id="popColors"></div>
+</div>
 
 <div class="selCount pill" id="selCount"></div>
 

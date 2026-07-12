@@ -208,6 +208,7 @@ function cellsOf(p){
   return cs;
 }
 function addOcc(p){
+  if (p.free) return;   // חלקים במיקום חופשי (חיבור מדויק) לא תופסים תאי רשת
   var e = p.l + rotDims(p).ly;
   cellsOf(p).forEach(function(c){
     if (!occ.has(c)) occ.set(c, []);
@@ -215,6 +216,7 @@ function addOcc(p){
   });
 }
 function remOcc(p){
+  if (p.free) return;
   cellsOf(p).forEach(function(c){
     var a = occ.get(c);
     if (!a) return;
@@ -232,17 +234,24 @@ function heightAt(cells, exceptId){
 }
 
 /* ---------- ניהול חלקים ---------- */
-function placeMesh(p){
-  var mesh = meshes.get(p.id);
+/* מיקום וכיוון החלק — תומך גם במיקום חופשי (p.free) שנקבע ע"י מנוע החיבור */
+function gridPos(p){
   var rd = rotDims(p);
-  mesh.quaternion.copy(quatOf(p));
-  // העוגן הוא פינת הרשת; ממקמים כך שהקופסה המסובבת ממורכזת בטביעת הרגל ותחתיתה בשכבה
   var padX = (rd.fw - rd.sx) / 2, padZ = (rd.fd - rd.sz) / 2;
-  mesh.position.set(
+  return new THREE.Vector3(
     p.x + OFF + padX - rd.mn[0],
     p.l * LU - rd.mn[1],
     p.z + OFF + padZ - rd.mn[2]
   );
+}
+function placeMesh(p){
+  var mesh = meshes.get(p.id);
+  mesh.quaternion.copy(quatOf(p));
+  if (p.free && p.pos){
+    mesh.position.set(p.pos[0], p.pos[1], p.pos[2]);
+  } else {
+    mesh.position.copy(gridPos(p));
+  }
 }
 function addPart(p){
   parts.push(p);
@@ -310,6 +319,7 @@ function afterSel(){
   if (sc){ sc.textContent = multi ? selIds.length + ' חלקים נבחרו' : ''; sc.style.display = multi ? '' : 'none'; }
   var mb = document.getElementById('btnMulti');
   if (mb) mb.classList.toggle('active', multiMode);
+  if (!has){ var cp = document.getElementById('colorPop'); if (cp) cp.hidden = true; }
 }
 function selectPart(p){ selIds = p ? [p.id] : []; if (!p) multiMode = false; afterSel(); }
 function toggleSelect(p){
@@ -589,10 +599,13 @@ canvas.addEventListener('pointermove', function(e){
       });
       dragGroup.forEach(function(p){ p.x += ddx; p.z += ddz; });
       if (dragGroup.length === 1){
-        // שומרים על הגובה שנבחר (למשל אחרי הרמה); מושיבים מחדש רק אם יש התנגשות
         var p = dragGroup[0];
+        p.free = false; if (p.pos) delete p.pos;
+        // שומרים על הגובה שנבחר (למשל אחרי הרמה); מושיבים מחדש רק אם יש התנגשות
         p.l = dragPreferL;
         if (collides(p)) p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+        // מצב הצמדה מגנטית: החלק נכנס חופשי לנקודת החיבור הקרובה (פין↔חור וכו')
+        if (snapViz) connectSnap(p);
       }
       dragGroup.forEach(placeMesh);
       showMateViz(dragGroup);
@@ -629,6 +642,7 @@ function pointerEnd(e){
         var an = anchorFor(armed, null, hit.point.x, hit.point.z);
         var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, q:null, c:curColor};
         np.l = connectLayer(np);
+        if (snapViz) connectSnap(np);
         if (np.l <= MAXH){
           pushUndo(snapshot());
           addPart(np); save(); vibrate(9);
@@ -689,6 +703,13 @@ document.getElementById('btnDel').addEventListener('click', function(){
   ps.forEach(removePart); save(); vibrate(9);
 });
 function reorient(p, mut){
+  if (p.free){
+    // חלק במיקום חופשי: מסובבים סביב מרכזו ושומרים על המיקום
+    pushUndo(snapshot());
+    mut(p);
+    placeMesh(p); save(); vibrate(6);
+    return;
+  }
   pushUndo(snapshot());
   var f0 = fp(p);
   var cx = p.x + f0.w/2, cz = p.z + f0.d/2;
@@ -715,6 +736,16 @@ function collides(p){
 function nudgeY(dir){
   if (!selIds.length) return;
   var ps = selParts();
+  // חלקים במיקום חופשי — מזיזים בגובה ישירות
+  if (ps.some(function(p){ return p.free; })){
+    pushUndo(snapshot());
+    ps.forEach(function(p){
+      if (p.free && p.pos) p.pos[1] += dir * LU;
+      else { remOcc(p); p.l = Math.max(0, Math.min(MAXH, p.l + dir)); addOcc(p); }
+      placeMesh(p);
+    });
+    save(); vibrate(6); return;
+  }
   var snap = snapshot();
   ps.forEach(remOcc);
   var l0 = ps.map(function(p){ return p.l; });
@@ -786,15 +817,31 @@ document.getElementById('btnDup').addEventListener('click', function(){
   var copies = [];
   ps.forEach(function(p){
     var np = {id:nextId++, t:p.t, x:p.x, z:p.z, l:p.l + lift, q:p.q ? p.q.slice() : null, c:p.c};
+    if (p.free && p.pos){ np.free = true; np.pos = [p.pos[0], p.pos[1] + lift * LU, p.pos[2]]; }
     if (np.l <= MAXH){ addPart(np); copies.push(np.id); }
   });
   selIds = copies; afterSel(); save(); vibrate(9);
 });
+/* תפריט צבע נפתח בלחיצה על 🎨 */
+var popColorsEl = document.getElementById('popColors');
+COLORS.forEach(function(c){
+  var b = document.createElement('button');
+  b.className = 'sw';
+  b.style.background = c;
+  b.setAttribute('aria-label', c);
+  b.addEventListener('click', function(){
+    if (!selIds.length) return;
+    pushUndo(snapshot());
+    selParts().forEach(function(p){ p.c = c; });
+    applySelVisual(); save();
+    document.getElementById('colorPop').hidden = true;
+  });
+  popColorsEl.appendChild(b);
+});
 document.getElementById('btnPaint').addEventListener('click', function(){
   if (!selIds.length) return;
-  pushUndo(snapshot());
-  selParts().forEach(function(p){ p.c = curColor; });
-  applySelVisual(); save();
+  var pop = document.getElementById('colorPop');
+  pop.hidden = !pop.hidden;
 });
 document.getElementById('btnMulti').addEventListener('click', function(){
   multiMode = !multiMode;
@@ -1198,17 +1245,18 @@ window.__snapCount = function(){ return snapGroup.children.length; };
 /* ---------- מנוע חיבור מבוסס נקודות (shadow data) ---------- */
 /* מיקום וכיוון החלק ללא צורך ב-mesh — משכפל את חישוב placeMesh */
 function partPose(p){
-  var rd = rotDims(p);
-  var padX = (rd.fw - rd.sx) / 2, padZ = (rd.fd - rd.sz) / 2;
-  return {
-    pos: new THREE.Vector3(p.x + OFF + padX - rd.mn[0], p.l * LU - rd.mn[1], p.z + OFF + padZ - rd.mn[2]),
-    q: quatOf(p)
-  };
+  return { pos: (p.free && p.pos) ? new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]) : gridPos(p), q: quatOf(p) };
 }
 function worldSnaps(p){
   var pose = partPose(p);
   return (PD.parts[p.t].s || []).map(function(s){
-    return {g:s.g, r:s.r, v:new THREE.Vector3(s.p[0], s.p[1], s.p[2]).applyQuaternion(pose.q).add(pose.pos)};
+    var la = s.a || [0,1,0];
+    return {
+      g:s.g, r:s.r,
+      v: new THREE.Vector3(s.p[0], s.p[1], s.p[2]).applyQuaternion(pose.q).add(pose.pos),
+      a: new THREE.Vector3(la[0], la[1], la[2]).applyQuaternion(pose.q).normalize(),
+      lp: s.p, la: la
+    };
   });
 }
 /* נקודות בהן חיבור זכר של חלק אחד פוגש נקבה של חלק אחר (או להפך) */
@@ -1226,7 +1274,7 @@ function findMates(movingParts){
   moving.forEach(function(a){
     statics.forEach(function(b){
       if (a.g === b.g) return;                       // זכר מתחבר לנקבה בלבד
-      if (Math.abs(a.r - b.r) > 1.5) return;          // קטרים תואמים
+      if (Math.abs(a.r - b.r) > 2.5) return;          // קטרים תואמים (פין r6 בחור r8 וכו')
       if (a.v.distanceTo(b.v) < 0.22){
         mates.push(a.v.clone().lerp(b.v, 0.5));
       }
@@ -1235,6 +1283,54 @@ function findMates(movingParts){
   return mates;
 }
 function countMates(movingParts){ return findMates(movingParts).length; }
+
+/* ---------- הצמדה מגנטית: יישור מחבר-למחבר (בליטה↔שקע, פין↔חור) ----------
+   מוצאים את זוג המחברים התואמים הקרוב ביותר, מסובבים את החלק כך שהצירים
+   קו-לינאריים, ומזיזים אותו כך שנקודות המחבר מתלכדות — מיקום חופשי בתלת-ממד. */
+var CONNECT_R = 0.9; // רדיוס תפיסה (יחידות בליטה)
+function connectSnap(p){
+  p.free = false; if (p.pos) delete p.pos;   // מתחילים ממצב רשת
+  var ms = worldSnaps(p);
+  if (!ms.length) return false;
+  var best = null, bestD = CONNECT_R;
+  parts.forEach(function(o){
+    if (o.id === p.id) return;
+    // סינון גס לפי מרחק כדי לחסוך חישוב
+    var oc = partPose(o).pos, pc = partPose(p).pos;
+    if (Math.abs(oc.x - pc.x) > 5 || Math.abs(oc.z - pc.z) > 5 || Math.abs(oc.y - pc.y) > 5) return;
+    var os = worldSnaps(o);
+    ms.forEach(function(a){
+      os.forEach(function(b){
+        if (a.g === b.g) return;                 // זכר↔נקבה בלבד
+        if (Math.abs(a.r - b.r) > 2.5) return;   // קוטר תואם (כולל פין↔חור)
+        var d = a.v.distanceTo(b.v);
+        if (d < bestD){ bestD = d; best = {a:a, b:b}; }
+      });
+    });
+  });
+  if (!best) return false;
+  // סיבוב: ציר המחבר הנע → קו-לינארי עם ציר היעד (בוחרים כיוון עם סיבוב מינימלי)
+  var sign = best.a.a.dot(best.b.a) >= 0 ? 1 : -1;
+  var src = best.a.a.clone().normalize();
+  var tgt = best.b.a.clone().multiplyScalar(sign).normalize();
+  var dq = new THREE.Quaternion();
+  if (src.dot(tgt) < -0.9999){
+    // הפוך בדיוק — סיבוב 180° סביב ציר ניצב
+    var perp = Math.abs(src.x) < 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+    perp.cross(src).normalize();
+    dq.setFromAxisAngle(perp, Math.PI);
+  } else {
+    dq.setFromUnitVectors(src, tgt);
+  }
+  var newQ = dq.clone().multiply(quatOf(p));
+  // מיקום כך שנקודת המחבר הנע מתלכדת עם היעד
+  var lp = new THREE.Vector3(best.a.lp[0], best.a.lp[1], best.a.lp[2]).applyQuaternion(newQ);
+  var newPos = best.b.v.clone().sub(lp);
+  p.free = true;
+  p.q = [newQ.x, newQ.y, newQ.z, newQ.w];
+  p.pos = [newPos.x, newPos.y, newPos.z];
+  return true;
+}
 
 /* גובה החיבור: בוחר את השכבה שבה נוצרים הכי הרבה חיבורים סביב גובה הישיבה הטבעי */
 function connectLayer(p){
@@ -1386,6 +1482,7 @@ document.getElementById('btnSnap').addEventListener('click', function(){
   snapViz = !snapViz;
   this.classList.toggle('active', snapViz);
   refreshSnapViz();
+  toast(snapViz ? '🧲 הצמדה מגנטית פעילה — גררו חלק לנקודת חיבור (פין↔חור, בליטה↔שקע)' : 'הצמדה מגנטית כבויה');
 });
 
 /* ---------- משתמשים ושיתוף ---------- */
@@ -1655,6 +1752,57 @@ window.__selColor = function(){ return sel ? sel.c : ''; };
 window.__selCount = function(){ return selIds.length; };
 window.__board = function(){ return BOARD; };
 window.__spinNodes = function(){ return spinNodes ? spinNodes.length : 0; };
+window.__selFree = function(){ return sel ? !!sel.free : false; };
+window.__pinDemo = function(){
+  return buildRemotePart('2780', 'Technic Pin').then(function(){
+    if (!TYPES['3701']) return 'need3701';
+    selectPart(null);
+    parts.slice().forEach(removePart);
+    var brick = {id:nextId++, t:'3701', x:14, z:14, l:0, q:null, c:'#c91a09'}; addPart(brick);
+    var hole = worldSnaps(brick).filter(function(s){ return Math.abs(s.a.y) < 0.5; })[0];
+    // מציבים את הפין ברשת סמוך לחור (כמו גרירה קרובה), ומנוע החיבור מכניס אותו פנימה
+    var pin = {id:nextId++, t:'2780', x:15, z:14, l:3, q:null, c:'#1b2a34'};
+    var ok = connectSnap(pin); addPart(pin);
+    if (hole){ camTarget.set(hole.v.x, hole.v.y, hole.v.z); camR = 9; camPhi = 1.2; updateCamera(); }
+    return 'snapped=' + ok + ' mates=' + countMates([pin]) + ' pinPos=' + (pin.pos ? pin.pos.map(function(x){return x.toFixed(1);}) : 'grid');
+  }).catch(function(e){ return 'ERR:' + e.message; });
+};
+window.__pinTest = function(){
+  return buildRemotePart('2780', 'Technic Pin').then(function(){
+    if (!TYPES['2780']) return 'pin missing';
+    var brick = {id:70001, t:'3701', x:8, z:8, l:0, q:null, c:'#a0a5a9'};
+    if (!TYPES['3701']) return 'need 3701';
+    addPart(brick);
+    // מציבים את הפין קרוב לחור אופקי של הקורה, ואז מפעילים הצמדה
+    var hole = worldSnaps(brick).filter(function(s){ return Math.abs(s.a.y) < 0.5; })[0];
+    if (!hole){ removePart(brick); return 'no hole'; }
+    var pin = {id:70002, t:'2780', x:9, z:8, l:3, q:null, c:'#1b2a34'};
+    // מקרבים ידנית: מיקום חופשי התחלתי ליד החור
+    pin.free = true; pin.q = [0,0,0,1];
+    pin.pos = [hole.v.x + 0.4, hole.v.y + 0.3, hole.v.z + 0.4];
+    var snapped = connectSnap(pin);
+    addPart(pin);
+    var m = countMates([pin]);
+    var res = 'brickHoles=' + worldSnaps(brick).filter(function(s){ return Math.abs(s.a.y) < 0.5; }).length +
+              ' pinMales=' + PD.parts['2780'].s.filter(function(s){ return s.g === 'M'; }).length +
+              ' snapped=' + snapped + ' free=' + !!pin.free + ' mates=' + m;
+    removePart(brick); removePart(pin);
+    return res;
+  }).catch(function(e){ return 'ERR:' + e.message; });
+};
+window.__connectTest = function(){
+  var a = {id:80001, t:'3001', x:5, z:5, l:0, q:null, c:'#c91a09'};
+  addPart(a);
+  var b = {id:80002, t:'3001', x:5, z:5, l:7, q:null, c:'#0055bf'}; // חצי-פלטה גבוה מדי (מרחף)
+  var m0 = 0; { addPart(b); m0 = countMates([b]); removePart(b); }
+  var b2 = {id:80003, t:'3001', x:5, z:5, l:7, q:null, c:'#0055bf'};
+  var snapped = connectSnap(b2);
+  addPart(b2);
+  var m1 = countMates([b2]);
+  var res = 'floatMates=' + m0 + ' snapped=' + snapped + ' free=' + !!b2.free + ' matesAfter=' + m1 + ' posY=' + (b2.pos ? b2.pos[1].toFixed(2) : 'grid');
+  removePart(a); removePart(b2);
+  return res;
+};
 window.__hitTest = function(x, y){
   var h = castAt(x, y);
   return h ? (h.part ? 'part:' + h.part.id : 'ground@' + Math.round(h.point.x) + ',' + Math.round(h.point.z)) : 'none';
