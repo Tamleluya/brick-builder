@@ -35,7 +35,7 @@ var undoStack = [];
 
 /* ---------- סצנה ---------- */
 var canvas = document.getElementById('c');
-var renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:true});
+var renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:true, preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1354,6 +1354,7 @@ function switchUser(name){
   try { localStorage.setItem('bb-user', name); } catch(e){}
   syncUserBtn();
   undoStack = []; redoStack = [];
+  currentGalId = null;
   buildSubChips();
   if (!load()) setModel([]); // משתמש חדש מתחיל בלוח נקי
 }
@@ -1431,6 +1432,103 @@ function readHashModel(){
   if (location.hash.indexOf('#m=') !== 0) return null;
   try { return JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3))))); } catch(e){ return null; }
 }
+
+/* ---------- גלריית דגמים (שמירות מרובות לכל משתמש, מקומי) ---------- */
+var currentGalId = null;
+function galKey(){ return 'bb-gal-' + (curUser || 'אורח'); }
+function getGal(){ try { return JSON.parse(localStorage.getItem(galKey()) || '[]'); } catch(e){ return []; } }
+function setGal(a){ try { localStorage.setItem(galKey(), JSON.stringify(a)); } catch(e){} }
+function galById(id){ return getGal().filter(function(g){ return g.id === id; })[0]; }
+function uid(){ return 'g' + Math.floor(Math.random() * 1e9).toString(36) + selIds.length + parts.length; }
+function captureThumb(){
+  try {
+    renderer.render(scene, camera);
+    var tc = document.createElement('canvas'); tc.width = 240; tc.height = 150;
+    tc.getContext('2d').drawImage(renderer.domElement, 0, 0, tc.width, tc.height);
+    return tc.toDataURL('image/jpeg', 0.72);
+  } catch(e){ return ''; }
+}
+function saveToGallery(){
+  var gal = getGal();
+  var typed = document.getElementById('galName').value.trim();
+  var cur = currentGalId ? galById(currentGalId) : null;
+  var name = typed || (cur && cur.name) || ('דגם ' + (gal.length + 1));
+  var thumb = captureThumb();
+  var snap = snapshot();
+  if (cur){
+    cur.name = name; cur.thumb = thumb; cur.parts = snap;
+    gal = gal.map(function(g){ return g.id === cur.id ? cur : g; });
+  } else {
+    currentGalId = uid();
+    gal.push({id:currentGalId, name:name, thumb:thumb, parts:snap});
+  }
+  setGal(gal); renderGal(); vibrate(9);
+  toast('נשמר בגלריה: ' + name);
+}
+function saveCopy(){
+  var gal = getGal();
+  var typed = document.getElementById('galName').value.trim();
+  var base = typed || (currentGalId && galById(currentGalId) ? galById(currentGalId).name : 'דגם');
+  currentGalId = uid();
+  gal.push({id:currentGalId, name:base + ' (עותק)', thumb:captureThumb(), parts:snapshot()});
+  setGal(gal); renderGal(); toast('נשמר עותק חדש');
+}
+function loadGalItem(id){
+  var e = galById(id); if (!e) return;
+  setModel(JSON.parse(e.parts));
+  currentGalId = id;
+  document.getElementById('galName').value = e.name;
+  save();
+  document.getElementById('galleryPanel').hidden = true;
+  toast('נטען: ' + e.name);
+}
+function deleteGalItem(id){
+  setGal(getGal().filter(function(g){ return g.id !== id; }));
+  if (currentGalId === id) currentGalId = null;
+  renderGal();
+}
+function newModel(){
+  pushUndo(snapshot());
+  selectPart(null);
+  parts = []; rebuildAll();
+  currentGalId = null;
+  document.getElementById('galName').value = '';
+  save();
+  document.getElementById('galleryPanel').hidden = true;
+  toast('דגם חדש — לוח נקי');
+}
+function renderGal(){
+  var grid = document.getElementById('galGrid');
+  grid.innerHTML = '';
+  var gal = getGal();
+  if (!gal.length){
+    grid.innerHTML = '<div class="galEmpty">אין עדיין דגמים שמורים. בנו משהו ולחצו "שמור דגם".</div>';
+    return;
+  }
+  gal.slice().reverse().forEach(function(g){
+    var card = document.createElement('div');
+    card.className = 'galCard' + (g.id === currentGalId ? ' cur' : '');
+    var img = document.createElement('img');
+    img.className = 'galThumb'; img.src = g.thumb || ''; img.alt = g.name;
+    img.addEventListener('click', function(){ loadGalItem(g.id); });
+    var nm = document.createElement('div'); nm.className = 'galNm'; nm.textContent = g.name; nm.dir = 'auto';
+    var del = document.createElement('button'); del.className = 'galDel'; del.textContent = '✕';
+    del.addEventListener('click', function(ev){ ev.stopPropagation(); deleteGalItem(g.id); });
+    card.appendChild(img); card.appendChild(nm); card.appendChild(del);
+    grid.appendChild(card);
+  });
+}
+document.getElementById('btnGallery').addEventListener('click', function(){
+  document.getElementById('galleryPanel').hidden = false;
+  var cur = currentGalId ? galById(currentGalId) : null;
+  document.getElementById('galName').value = cur ? cur.name : '';
+  renderGal();
+});
+document.getElementById('btnGalClose').addEventListener('click', function(){ document.getElementById('galleryPanel').hidden = true; });
+document.getElementById('galleryPanel').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
+document.getElementById('btnGalSave').addEventListener('click', saveToGallery);
+document.getElementById('btnGalCopy').addEventListener('click', saveCopy);
+document.getElementById('btnGalNew').addEventListener('click', newModel);
 
 /* ---------- HUD ---------- */
 var stN = document.getElementById('stN'), stF = document.getElementById('stF');

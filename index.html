@@ -98,6 +98,18 @@
   .abtn.active{background:var(--accent);color:var(--accent-ink);}
   /* הטיה/גלגול תקפים לחלק בודד בלבד */
   body.multiSel .abtn.onlyOne{opacity:.4;}
+  .galTitle{flex:1;font-size:14px;}
+  .galBar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .galBar input{flex:1;min-width:110px;border:0;border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;background:var(--panel-soft);color:var(--text);outline:none;}
+  .galBar input:focus{outline:2px solid var(--accent);}
+  .galBar .abtn{background:var(--panel-soft);}
+  .galGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:52vh;overflow-y:auto;padding:2px;}
+  .galEmpty{grid-column:1/-1;color:var(--muted);font-size:12.5px;text-align:center;padding:24px 8px;}
+  .galCard{position:relative;border-radius:12px;overflow:hidden;background:var(--panel-soft);cursor:pointer;}
+  .galCard.cur{outline:2px solid var(--accent);}
+  .galThumb{display:block;width:100%;height:88px;object-fit:cover;background:#cfe0ec;cursor:pointer;}
+  .galNm{padding:6px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
   .subchip{position:relative;}
   .subDel{
     position:absolute;top:-6px;left:-6px;width:18px;height:18px;border:0;border-radius:50%;
@@ -199,6 +211,7 @@
   <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
   <div class="spacer"></div>
   <button class="tbtn wide" id="btnUser" title="החלפת משתמש">👤</button>
+  <button class="tbtn" id="btnGallery" title="הדגמים שלי">📁</button>
   <button class="tbtn" id="btnCam" title="מצב סיבוב מבט">🧭</button>
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
@@ -229,6 +242,22 @@
 <div class="armedBar pill" id="armedBar">
   <span id="armedName"></span>
   <button class="abtn" id="btnDisarm">✕</button>
+</div>
+
+<div class="search" id="galleryPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">הדגמים שלי</b>
+      <button class="tbtn" id="btnGalClose">✕</button>
+    </div>
+    <div class="galBar">
+      <input id="galName" type="text" placeholder="שם הדגם…" autocomplete="off">
+      <button class="abtn" id="btnGalSave">💾 שמור</button>
+      <button class="abtn" id="btnGalCopy">📋 עותק</button>
+      <button class="abtn" id="btnGalNew">➕ חדש</button>
+    </div>
+    <div class="galGrid" id="galGrid"></div>
+  </div>
 </div>
 
 <div class="search" id="subPanel" hidden>
