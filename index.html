@@ -89,6 +89,17 @@
   }
   .armedBar.on{display:flex;}
   .armedBar .abtn{padding:6px 9px;}
+  /* כשחלק נבחר: הפלטה מתקפלת ותפריט הפעולות יורד למקומה */
+  body.hasSel .dock{display:none;}
+  body.hasSel .actions{bottom:calc(env(safe-area-inset-bottom,0px) + 14px);}
+  .dockMin{
+    position:absolute;top:-13px;right:14px;
+    border:0;cursor:pointer;background:var(--panel);color:var(--muted);
+    border-radius:9px;padding:2px 12px;font-size:11px;line-height:1.6;
+  }
+  .dock{position:fixed;}
+  .dock.min .colors,.dock.min .cats,.dock.min .parts{display:none;}
+  .dock.min{padding:6px 10px;}
   .abtn{
     border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;padding:9px 13px;font-size:12.5px;font-family:inherit;
@@ -187,6 +198,8 @@
 <div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה חלק · לחיצה ארוכה בוחרת · 🧭 לסיבוב המבט · ▶ מניע גלגלי שיניים</div>
 
 <div class="actions pill" id="actions">
+  <button class="abtn" id="btnUp" title="הרמה בגובה">⬆ הרם</button>
+  <button class="abtn" id="btnDown" title="הורדה בגובה">⬇ הורד</button>
   <button class="abtn" id="btnRot" title="סיבוב סביב הציר האנכי">⟳ סובב</button>
   <button class="abtn" id="btnPitch" title="הטיה קדימה">⤓ הטה</button>
   <button class="abtn" id="btnRoll" title="גלגול הצידה">⤿ גלגל</button>
@@ -235,7 +248,8 @@
   </div>
 </div>
 
-<div class="dock pill">
+<div class="dock pill" id="dock">
+  <button class="dockMin" id="btnDockMin" title="מזעור הפלטה">▾ הסתר</button>
   <div class="colors" id="colors"></div>
   <div class="cats" id="cats"></div>
   <div class="parts" id="parts"></div>

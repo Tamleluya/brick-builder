@@ -295,6 +295,7 @@ function selectPart(p){
     m.material = hm;
   }
   document.getElementById('actions').classList.toggle('on', !!p);
+  document.body.classList.toggle('hasSel', !!p); // הדוק מתקפל כדי לא להסתיר את הלוח
 }
 
 /* ---------- undo/redo / שמירה לפי משתמש ---------- */
@@ -450,12 +451,11 @@ canvas.addEventListener('pointerdown', function(e){
   }
 });
 var lpTimer = null, lpDone = false;
-var camMode = false, orbitHinted = false;
+var camLock = false, lockHinted = false;
 document.getElementById('btnCam').addEventListener('click', function(){
-  camMode = !camMode;
-  this.classList.toggle('active', camMode);
-  selectPart(null);
-  toast(camMode ? 'מצב מבט 🧭 — גררו כדי לסובב את המצלמה' : 'מצב בנייה — גרירה מזיזה חלקים');
+  camLock = !camLock;
+  this.classList.toggle('active', camLock);
+  toast(camLock ? 'המצלמה ננעלה 🔒 — גרירת רקע לא תזיז את המבט' : 'המצלמה שוחררה — גרירת רקע מסובבת את המבט');
 });
 
 canvas.addEventListener('pointermove', function(e){
@@ -485,20 +485,20 @@ canvas.addEventListener('pointermove', function(e){
   if (mode === 'maybe'){
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 9){
       clearTimeout(lpTimer);
-      if (hitPart && !camMode){
+      if (hitPart){
         mode = 'drag';
         dragSnap = snapshot();
         dragOrig = {x:hitPart.x, z:hitPart.z, l:hitPart.l};
         selectPart(hitPart);
         remOcc(hitPart);
-      } else if (camMode){
+      } else if (!camLock){
         mode = 'orbit';
       } else {
-        // מצב בנייה: גרירה על רקע לא מזיזה את המצלמה בטעות
+        // מצלמה נעולה — לעבודה עדינה בלי הזזות מבט בטעות
         mode = 'idle';
-        if (!orbitHinted){
-          orbitHinted = true;
-          toast('לסיבוב המבט הקישו על 🧭 למעלה (צביטה לזום עובדת תמיד)');
+        if (!lockHinted){
+          lockHinted = true;
+          toast('המצלמה נעולה 🔒 — שחררו בכפתור למעלה');
         }
       }
     } else return;
@@ -610,6 +610,38 @@ function reorient(p, mut){
   p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
   addOcc(p); placeMesh(p); save(); vibrate(6);
 }
+/* הזזה אנכית חופשית — משחררת את הנעילה על "תמיד על הכי גבוה" */
+function collides(p){
+  var ly = rotDims(p).ly;
+  var cs = cellsOf(p);
+  for (var i=0;i<cs.length;i++){
+    var arr = occ.get(cs[i]) || [];
+    for (var j=0;j<arr.length;j++){
+      var v = arr[j];
+      if (v.id !== p.id && v.s < p.l + ly && p.l < v.e) return true;
+    }
+  }
+  return false;
+}
+function nudgeY(dir){
+  if (!sel) return;
+  var p = sel;
+  var snap = snapshot();
+  remOcc(p);
+  var l0 = p.l;
+  var l = p.l + dir;
+  while (l >= 0 && l <= MAXH){
+    p.l = l;
+    if (!collides(p)) break;
+    l += dir;
+  }
+  if (l < 0 || l > MAXH){ p.l = l0; addOcc(p); return; }
+  addOcc(p); placeMesh(p);
+  pushUndo(snap); save(); vibrate(6);
+}
+document.getElementById('btnUp').addEventListener('click', function(){ nudgeY(1); });
+document.getElementById('btnDown').addEventListener('click', function(){ nudgeY(-1); });
+
 /* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה */
 document.getElementById('btnRot').addEventListener('click', function(){
   if (!sel) return;
@@ -678,6 +710,11 @@ function syncPalette(){
     bar.classList.remove('on');
   }
 }
+document.getElementById('btnDockMin').addEventListener('click', function(){
+  var dock = document.getElementById('dock');
+  dock.classList.toggle('min');
+  this.textContent = dock.classList.contains('min') ? '▴ פלטת חלקים' : '▾ הסתר';
+});
 document.getElementById('btnDisarm').addEventListener('click', function(){
   armed = null;
   syncPalette();
