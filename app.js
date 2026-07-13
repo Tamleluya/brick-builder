@@ -18,6 +18,8 @@ PD.order.forEach(function(id){
   TYPES[id] = {n:p.n, w:p.w, d:p.d, h:p.h, flat:p.h === 1};
 });
 var TYPE_ORDER = PD.order.slice();
+function isMag(t){ return !!(PD.parts[t] && PD.parts[t].mag); }
+function defColor(t){ return (PD.parts[t] && PD.parts[t].col) || null; }
 
 var COLORS = ['#c91a09','#fe8a18','#f2cd37','#237841','#0055bf','#f2f3f2','#1b2a34','#a0a5a9'];
 
@@ -640,11 +642,14 @@ function pointerEnd(e){
       var hit = castAt(e.clientX, e.clientY);
       if (hit){
         var an = anchorFor(armed, null, hit.point.x, hit.point.z);
-        var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, q:null, c:curColor};
-        np.l = connectLayer(np);
-        if (np.l <= MAXH){
+        var np = {id:nextId++, t:armed, x:an.x, z:an.z, l:0, q:null, c:(defColor(armed) || curColor)};
+        // חלקים מגנטיים (פינים/סרנים/גלגלים) — מנסים להיצמד לסרן/חור קרוב מיד
+        var snapped = isMag(armed) && connectSnap(np, 2.6);
+        if (!snapped) np.l = connectLayer(np);
+        if (snapped || np.l <= MAXH){
           pushUndo(snapshot());
           addPart(np); save(); vibrate(9);
+          if (snapped) toast('🧲 התחבר!');
         }
       }
     } else if (hitPart){
@@ -654,11 +659,17 @@ function pointerEnd(e){
       selectPart(null);
     }
   } else if (mode === 'drag' && dragGroup){
+    // גרירת חלק מגנטי בודד (פין/סרן/גלגל) — נסה להיצמד לסרן/חור קרוב בשחרור
+    var snappedDrag = false;
+    if (dragGroup.length === 1 && isMag(dragGroup[0].t)){
+      snappedDrag = connectSnap(dragGroup[0], 2.6);
+    }
     dragGroup.forEach(addOcc);
     dragGroup.forEach(placeMesh);
     var moved = dragOrig && dragOrig.some(function(o){ return o.x !== o.p.x || o.z !== o.p.z || o.l !== o.p.l; });
-    if (moved){
+    if (moved || snappedDrag){
       pushUndo(dragSnap); save(); vibrate(9);
+      if (snappedDrag) toast('🧲 התחבר!');
     }
     dragSnap = null; dragOrig = null; dragGroup = null;
   }
@@ -881,7 +892,7 @@ COLORS.forEach(function(c){
 
 var partsEl = document.getElementById('parts');
 var catsEl = document.getElementById('cats');
-var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['g','גלגלי שיניים'],['m','מודולים 🧩'],['c','קטלוג ⬇']];
+var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['w','גלגלים 🛞'],['g','גלגלי שיניים'],['d','דלתות/חלונות'],['m','מודולים 🧩'],['c','קטלוג ⬇']];
 var curCat = 'b';
 function armedLabel(){
   if (!armed) return '';
@@ -961,6 +972,19 @@ function makeChip(t){
     if (armed) selectPart(null);
     syncPalette();
   });
+  // חלקים מהקטלוג (בעלי שם אנגלי מקורי) — לחיצה ארוכה פותחת תפריט קטגוריה/הסרה
+  if (PD.parts[t].en){
+    var lpT = null, lpMoved = false;
+    chip.addEventListener('pointerdown', function(ev){
+      lpMoved = false;
+      lpT = setTimeout(function(){ lpMoved = true; openCatMenu(t, ev.clientX, ev.clientY); vibrate(12); }, 480);
+    });
+    var cancel = function(){ if (lpT){ clearTimeout(lpT); lpT = null; } };
+    chip.addEventListener('pointerup', cancel);
+    chip.addEventListener('pointermove', cancel);
+    chip.addEventListener('pointerleave', cancel);
+    chip.addEventListener('click', function(ev){ if (lpMoved){ ev.stopPropagation(); ev.preventDefault(); } }, true);
+  }
   partsEl.appendChild(chip);
 }
 TYPE_ORDER.forEach(makeChip);
@@ -1179,9 +1203,97 @@ async function buildRemotePart(id, name){
       snaps.push({g:s.g, r:s.r, p:c, a:[A[0]/al, -A[1]/al, A[2]/al]});  // היפוך Y כמו המיקומים
     }
   });
-  PD.parts[id] = {n:name, cat:'c', teeth:0, w:w, d:d, h:hP, v:verts, f:faces, e:eidx, s:snaps};
-  TYPES[id] = {n:name, w:w, d:d, h:hP, flat:hP === 1};
+  var meta = classifyPart(name, snaps);
+  var disp = (typeof userPartCat === 'function' && userPartCat(id)) || meta.cat;   // קטגוריה שהמשתמש בחר גוברת
+  var friendly = heGloss(name);
+  PD.parts[id] = {n:(friendly || name), en:name, cat:disp, teeth:meta.teeth, mag:meta.mag, col:meta.col || '', w:w, d:d, h:hP, v:verts, f:faces, e:eidx, s:snaps};
+  TYPES[id] = {n:(friendly || name), w:w, d:d, h:hP, flat:hP === 1};
   if (TYPE_ORDER.indexOf(id) < 0){ TYPE_ORDER.push(id); makeChip(id); }
+}
+/* סיווג אוטומטי של חלק מהקטלוג לפי שמו + נתוני החיבור */
+function classifyPart(name, snaps){
+  var l = ' ' + name.toLowerCase() + ' ';
+  var teeth = 0;
+  var tm = name.match(/(\d+)\s*tooth/i); if (tm) teeth = +tm[1];
+  var has = function(re){ return re.test(l); };
+  var cat = 's', mag = 0, col = '';
+  if (has(/\b(tyre|tire)\b/) || has(/\bwheel\b/)){ cat='w'; mag=1; col='#20242b'; }
+  else if (has(/\b(door|window|glass|windscreen|windshield|shutter)\b/)){ cat='d'; }
+  else if (teeth || has(/\bgear\b/)){ cat='g'; }
+  else if (has(/\b(axle|pin)\b/) && has(/technic|friction|connector/)){ cat='t'; mag=1; }
+  else if (has(/\baxle\b/) || has(/technic pin/)){ cat='t'; mag=1; }
+  else if (has(/\b(technic|liftarm|beam)\b/)){ cat='t'; }
+  else if (has(/\b(baseplate|plate)\b/)){ cat='p'; }
+  else if (has(/\bbrick\b/) && !has(/\bround\b/)){ cat='b'; }
+  else if (has(/\b(tile|slope|round|cone|arch|dish|cylinder)\b/)){ cat='s'; }
+  return {cat:cat, teeth:teeth, mag:mag, col:col};
+}
+
+/* ---------- חלקים אישיים מהקטלוג: שמירה + ארגון בתפריט ---------- */
+function getMyParts(){ try { return JSON.parse(localStorage.getItem('bb-myparts') || '[]'); } catch(e){ return []; } }
+function setMyParts(a){ try { localStorage.setItem('bb-myparts', JSON.stringify(a)); } catch(e){} }
+function userPartCat(id){ var m = getMyParts().filter(function(p){ return p.id === id; })[0]; return m ? m.cat : null; }
+function recordMyPart(id){
+  var mp = getMyParts();
+  var e = mp.filter(function(p){ return p.id === id; })[0];
+  var info = {id:id, cat:PD.parts[id].cat, n:PD.parts[id].n, en:PD.parts[id].en || PD.parts[id].n};
+  if (e){ e.cat = info.cat; e.n = info.n; e.en = info.en; } else mp.push(info);
+  setMyParts(mp);
+}
+function movePartCat(id, cat){
+  if (!PD.parts[id]) return;
+  PD.parts[id].cat = cat;
+  var mp = getMyParts(); var e = mp.filter(function(p){ return p.id === id; })[0];
+  if (e){ e.cat = cat; setMyParts(mp); }
+  curCat = cat; syncPalette();
+  toast('הועבר ל"' + (CATS.filter(function(c){ return c[0]===cat; })[0]||['',''])[1] + '"');
+}
+function removeUserPart(id){
+  var chip = partsEl.querySelector('.chip[data-t="' + id + '"]');
+  if (chip) chip.remove();
+  var i = TYPE_ORDER.indexOf(id); if (i >= 0) TYPE_ORDER.splice(i, 1);
+  delete TYPES[id];
+  setMyParts(getMyParts().filter(function(p){ return p.id !== id; }));
+  if (armed === id){ armed = null; syncPalette(); }
+  toast('החלק הוסר מהתפריט');
+}
+/* טוען מחדש (מהרשת) את החלקים האישיים שנשמרו, וממקם בקטגוריה שנבחרה */
+function restoreMyParts(){
+  getMyParts().forEach(function(p){
+    if (TYPES[p.id]) return;
+    buildRemotePart(p.id, p.en || p.n).then(function(){
+      if (PD.parts[p.id]){ PD.parts[p.id].cat = p.cat; syncPalette(); }
+    }).catch(function(){});
+  });
+}
+/* תפריט קטגוריות לחלק (לחיצה ארוכה על צ'יפ בקטלוג) */
+var catMenuEl = null;
+function closeCatMenu(){ if (catMenuEl){ catMenuEl.remove(); catMenuEl = null; } }
+function openCatMenu(id, x, y){
+  closeCatMenu();
+  var m = document.createElement('div');
+  m.className = 'catMenu pill';
+  var ttl = document.createElement('div'); ttl.className = 'catMenuTtl';
+  ttl.textContent = 'העבר "' + (PD.parts[id].n || id) + '" אל:';
+  m.appendChild(ttl);
+  var wrap = document.createElement('div'); wrap.className = 'catMenuRow';
+  CATS.filter(function(c){ return ['b','p','s','t','w','g','d'].indexOf(c[0]) >= 0; }).forEach(function(c){
+    var b = document.createElement('button'); b.className = 'schip'; b.textContent = c[1];
+    if (PD.parts[id].cat === c[0]) b.classList.add('on');
+    b.addEventListener('click', function(){ movePartCat(id, c[0]); closeCatMenu(); });
+    wrap.appendChild(b);
+  });
+  m.appendChild(wrap);
+  var rm = document.createElement('button'); rm.className = 'schip danger'; rm.textContent = '🗑 הסר מהתפריט';
+  rm.addEventListener('click', function(){ removeUserPart(id); closeCatMenu(); });
+  m.appendChild(rm);
+  document.body.appendChild(m);
+  var mw = m.offsetWidth, mh = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, x - mw/2)) + 'px';
+  m.style.top = Math.max(8, y - mh - 12) + 'px';
+  catMenuEl = m;
+  setTimeout(function(){ document.addEventListener('pointerdown', onDocDown, true); }, 0);
+  function onDocDown(ev){ if (catMenuEl && !catMenuEl.contains(ev.target)){ closeCatMenu(); document.removeEventListener('pointerdown', onDocDown, true); } }
 }
 
 /* חיפוש UI */
@@ -1189,9 +1301,83 @@ var searchPanel = document.getElementById('searchPanel');
 var searchInput = document.getElementById('searchInput');
 var searchResults = document.getElementById('searchResults');
 var searchMeta = document.getElementById('searchMeta');
+var searchChips = document.getElementById('searchChips');
+
+/* מילון עברית→אנגלית: מתרגם מונחים נפוצים לשמות ה-LDraw כדי שאפשר לחפש בעברית */
+var HE2EN = {
+  'לבנה':'brick','לבנים':'brick','קובייה':'brick','קוביה':'brick',
+  'פלטה':'plate','פלטות':'plate',
+  'אריח':'tile','אריחים':'tile','חלק':'tile',
+  'משופע':'slope','משופעת':'slope','שיפוע':'slope','משופעים':'slope',
+  'גלגל':'wheel','גלגלים':'wheel','גלגלי':'wheel',
+  'צמיג':'tyre','צמיגים':'tyre',
+  'סרן':'axle','סרנים':'axle','ציר':'axle',
+  'פין':'pin','פינים':'pin',
+  'קורה':'beam','קורות':'beam','ליפטארם':'liftarm',
+  'גלגלשיניים':'gear','שיניים':'gear','גלגלשיני':'gear',
+  'דלת':'door','דלתות':'door',
+  'חלון':'window','חלונות':'window','זכוכית':'glass',
+  'ציריה':'hinge','ציריות':'hinge','מפרק':'hinge',
+  'עגול':'round','עגולה':'round',
+  'קשת':'arch','קמרון':'arch',
+  'מעקה':'fence','גדר':'fence',
+  'סולם':'ladder','מדרגה':'stairs','מדרגות':'stairs',
+  'אנטנה':'antenna','דגל':'flag','צלחת':'dish','צלחתלוויין':'dish',
+  'ראש':'cone','חרוט':'cone','קונוס':'cone',
+  'צינור':'tube','מוט':'bar','ידית':'handle',
+  'טכני':'technic','טכנית':'technic',
+  'כנף':'wing','כידון':'windscreen','שמשה':'windscreen',
+  'סבל':'bracket','זווית':'bracket','תושבת':'bracket',
+  'לוח':'baseplate','בסיס':'baseplate'
+};
+/* אנגלית→עברית לתיוג ידידותי — מונחים ספציפיים לפני כלליים (slope לפני brick) */
+var EN2HE = {wheel:'גלגל',tyre:'צמיג',slope:'משופע',gear:'גלגל שיניים',axle:'סרן',
+  liftarm:'קורה',beam:'קורה',door:'דלת',window:'חלון',glass:'זכוכית',hinge:'ציריה',
+  arch:'קשת',cone:'חרוט',dish:'צלחת',wing:'כנף',bracket:'תושבת',ladder:'סולם',fence:'גדר',
+  antenna:'אנטנה',baseplate:'לוח בסיס',round:'עגול',bar:'מוט',pin:'פין',technic:'טכני',
+  tile:'אריח',plate:'פלטה',brick:'לבנה',minifig:'',minifigure:''};
+/* צורת נורמליזציה להתאמה: אותיות קטנות, בלי רווחים/× */
+function normKey(s){ return String(s).toLowerCase().replace(/×/g,'x').replace(/[\s._-]+/g,''); }
+/* תיוג עברי קצר לשם LDraw: מוצא מונח מוכר + מוסיף מידות אם יש */
+function heGloss(name){
+  var low = ' ' + name.toLowerCase() + ' ';
+  var lead = '';
+  for (var en in EN2HE){ if (EN2HE[en] && low.indexOf(en) >= 0){ lead = EN2HE[en]; break; } }
+  var dim = (name.match(/\b\d+\s*x\s*\d+(\s*x\s*\d+)?\b/i) || [''])[0].replace(/\s*/g,'');
+  if (!lead) return dim || '';
+  return dim ? (lead + ' ' + dim) : lead;
+}
+/* מתרגם שאילתת חיפוש: אם יש מילים עבריות — ממיר אותן לאנגלית */
+function translateQuery(q){
+  var out = [];
+  q.split(/\s+/).forEach(function(w){
+    if (!w) return;
+    var k = w.replace(/[\s._-]+/g,'');
+    if (HE2EN[k]) out.push(HE2EN[k]);
+    else if (HE2EN[w]) out.push(HE2EN[w]);
+    else out.push(w);
+  });
+  return out;
+}
+/* קיצורי-דרך נפוצים */
+var QUICK = [
+  ['🧱 לבנים','brick'],['▬ פלטות','plate'],['◻ אריחים','tile'],['◣ משופעים','slope'],
+  ['🛞 גלגלים','wheel'],['⊙ סרנים','axle'],['📌 פינים','pin'],['⚙ גלגלי שיניים','gear'],
+  ['🚪 דלתות','door'],['🪟 חלונות','window'],['⌒ קשתות','arch'],['◯ עגולים','round']
+];
+function buildSearchChips(){
+  searchChips.innerHTML = '';
+  QUICK.forEach(function(q){
+    var b = document.createElement('button');
+    b.className = 'schip'; b.textContent = q[0];
+    b.addEventListener('click', function(){ searchInput.value = q[1]; runSearch(); searchInput.focus(); });
+    searchChips.appendChild(b);
+  });
+}
 function openSearch(){
   searchPanel.hidden = false;
-  searchMeta.textContent = catalog.length.toLocaleString() + ' חלקים בקטלוג המלא · הקלידו שם באנגלית או מספר חלק';
+  buildSearchChips();
+  searchMeta.textContent = catalog.length.toLocaleString() + ' חלקים בקטלוג · חפשו בעברית/אנגלית או בחרו קטגוריה';
   searchResults.innerHTML = '';
   searchInput.value = '';
   searchInput.focus();
@@ -1200,31 +1386,41 @@ function closeSearch(){ searchPanel.hidden = true; }
 document.getElementById('btnSearch').addEventListener('click', openSearch);
 document.getElementById('btnCloseSearch').addEventListener('click', closeSearch);
 searchPanel.addEventListener('click', function(e){ if (e.target === searchPanel) closeSearch(); });
-searchInput.addEventListener('input', function(){
-  var q = searchInput.value.trim().toLowerCase();
+function runSearch(){
+  var raw = searchInput.value.trim();
   searchResults.innerHTML = '';
-  if (q.length < 2){
-    searchMeta.textContent = catalog.length.toLocaleString() + ' חלקים בקטלוג המלא · הקלידו לפחות 2 תווים';
+  if (raw.length < 2){
+    searchMeta.textContent = catalog.length.toLocaleString() + ' חלקים בקטלוג · הקלידו לפחות 2 תווים או בחרו קטגוריה';
     return;
   }
+  var terms = translateQuery(raw.toLowerCase());          // מונחי חיפוש (עברית מתורגמת)
+  var nterms = terms.map(normKey).filter(Boolean);
+  var nid = normKey(raw);
   var hits = [];
-  for (var i=0;i<catalog.length && hits.length<50;i++){
+  for (var i=0;i<catalog.length && hits.length<60;i++){
     var c = catalog[i];
-    if (c.id.indexOf(q) === 0 || c.n.toLowerCase().indexOf(q) >= 0) hits.push(c);
+    var nk = normKey(c.n);
+    var idHit = c.id.toLowerCase().indexOf(nid) === 0;
+    var nameHit = nterms.length && nterms.every(function(t){ return nk.indexOf(t) >= 0; });
+    if (idHit || nameHit) hits.push(c);
   }
-  searchMeta.textContent = hits.length ? hits.length + (hits.length === 50 ? '+ תוצאות' : ' תוצאות') : 'אין תוצאות';
+  searchMeta.textContent = hits.length ? (hits.length + (hits.length === 60 ? '+ תוצאות' : ' תוצאות')) : 'אין תוצאות — נסו מונח אחר (למשל: brick, גלגל, 3001)';
   hits.forEach(function(c){
     var row = document.createElement('button');
     row.className = 'sr';
     var pid = document.createElement('span'); pid.className = 'pid'; pid.textContent = c.id;
     var pn = document.createElement('span'); pn.className = 'pname'; pn.textContent = c.n;
     row.appendChild(pid); row.appendChild(pn);
+    var g = heGloss(c.n);
+    if (g){ var gl = document.createElement('span'); gl.className = 'pgloss'; gl.textContent = g; row.appendChild(gl); }
     row.addEventListener('click', function(){
       if (TYPES[c.id]){ armed = c.id; curCat = PD.parts[c.id].cat; syncPalette(); closeSearch(); return; }
       row.classList.add('loading');
       pn.textContent = 'מוריד את החלק… ' + c.n;
       buildRemotePart(c.id, c.n).then(function(){
-        armed = c.id; curCat = 'c'; selectPart(null); syncPalette(); closeSearch(); vibrate(9);
+        recordMyPart(c.id);
+        armed = c.id; curCat = PD.parts[c.id].cat; selectPart(null); syncPalette(); closeSearch(); vibrate(9);
+        toast('נוסף ל"' + (CATS.filter(function(k){ return k[0]===curCat; })[0]||['','קטלוג'])[1] + '" · לחיצה ארוכה על החלק מעבירה קטגוריה');
       }).catch(function(){
         row.classList.remove('loading');
         pn.textContent = c.n;
@@ -1233,7 +1429,8 @@ searchInput.addEventListener('input', function(){
     });
     searchResults.appendChild(row);
   });
-});
+}
+searchInput.addEventListener('input', runSearch);
 
 /* ---------- תצוגת נקודות חיבור (מנתוני ה-shadow האמיתיים) ---------- */
 var snapViz = false;
@@ -1315,16 +1512,17 @@ function countMates(movingParts){ return findMates(movingParts).length; }
    מוצאים את זוג המחברים התואמים הקרוב ביותר, מסובבים את החלק כך שהצירים
    קו-לינאריים, ומזיזים אותו כך שנקודות המחבר מתלכדות — מיקום חופשי בתלת-ממד. */
 var CONNECT_R = 0.9; // רדיוס תפיסה (יחידות בליטה)
-function connectSnap(p){
+function connectSnap(p, radius){
   p.free = false; if (p.pos) delete p.pos;   // מתחילים ממצב רשת
   var ms = worldSnaps(p);
   if (!ms.length) return false;
-  var best = null, bestD = CONNECT_R;
+  var best = null, bestD = radius || CONNECT_R;
+  var reach = (radius || CONNECT_R) + 4;
   parts.forEach(function(o){
     if (o.id === p.id) return;
     // סינון גס לפי מרחק כדי לחסוך חישוב
     var oc = partPose(o).pos, pc = partPose(p).pos;
-    if (Math.abs(oc.x - pc.x) > 5 || Math.abs(oc.z - pc.z) > 5 || Math.abs(oc.y - pc.y) > 5) return;
+    if (Math.abs(oc.x - pc.x) > reach || Math.abs(oc.z - pc.z) > reach || Math.abs(oc.y - pc.y) > reach) return;
     var os = worldSnaps(o);
     ms.forEach(function(a){
       os.forEach(function(b){
@@ -1628,14 +1826,18 @@ document.getElementById('btnMove').addEventListener('click', function(){
   this.classList.toggle('active', moveOn);
   updateMovePad();
   toast(moveOn
-    ? '✥ שלט הזזה: בחרו חלק והזיזו אותו בצעדים קטנים לכל כיוון (מאפשר הנחה חלק על חלק)'
+    ? '✥ שלט הזזה: מזיז את החלק הנבחר בצעדים קטנים על מישור הלוח (הרמה/הורדה — בלחיצה ארוכה על החלק)'
     : 'שלט הזזה כבוי');
 });
-/* כיווני תנועה יחסית למצלמה (במישור הלוח) */
+/* כיוון מצלמה נצמד לציר הלוח הקרוב ביותר (X או Z) — כדי שהתנועה תהיה ישרה ולא באלכסון */
+function snapXZ(v){
+  if (Math.abs(v.x) >= Math.abs(v.z)) return new THREE.Vector3((v.x >= 0 ? 1 : -1), 0, 0);
+  return new THREE.Vector3(0, 0, (v.z >= 0 ? 1 : -1));
+}
 function camDirs(){
-  var f = new THREE.Vector3(-Math.sin(camTheta), 0, -Math.cos(camTheta)).normalize();
-  var rt = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0)).normalize();
-  return {f:f, rt:rt};
+  var f = new THREE.Vector3(-Math.sin(camTheta), 0, -Math.cos(camTheta));
+  var rt = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0));
+  return {f:snapXZ(f), rt:snapXZ(rt)};
 }
 function moveSelBy(v){
   var ps = selParts(); if (!ps.length) return;
@@ -1651,8 +1853,6 @@ function dirVec(dir){
   if (dir === 'back') return d.f.clone().multiplyScalar(-FINE);
   if (dir === 'right') return d.rt.clone().multiplyScalar(FINE);
   if (dir === 'left') return d.rt.clone().multiplyScalar(-FINE);
-  if (dir === 'up') return new THREE.Vector3(0, FINE, 0);
-  if (dir === 'down') return new THREE.Vector3(0, -FINE, 0);
   return new THREE.Vector3();
 }
 Array.prototype.forEach.call(document.querySelectorAll('.mvb'), function(btn){
@@ -1916,6 +2116,7 @@ try { localStorage.setItem('bb-user', curUser); } catch(e){}
 if (getUsers().indexOf(curUser) < 0) setUsers(getUsers().concat([curUser]));
 syncUserBtn();
 buildSubChips();  // טעינת המודולים השמורים של המשתמש הנוכחי
+restoreMyParts(); // טעינה מחדש של חלקי הקטלוג האישיים (מהרשת, ברקע)
 var sharedModel = readHashModel();
 if (sharedModel){
   // דגם משותף נטען למשתמש ייעודי כדי לא לדרוס דגמים של אף אחד
@@ -2064,6 +2265,56 @@ window.__connectTest = function(){
   var res = 'floatMates=' + m0 + ' snapped=' + snapped + ' free=' + !!b2.free + ' matesAfter=' + m1 + ' posY=' + (b2.pos ? b2.pos[1].toFixed(2) : 'grid');
   removePart(a); removePart(b2);
   return res;
+};
+window.__wheelTest = function(){
+  // סרן על הלוח, גלגל בקרבתו → אמור להיצמד מגנטית לחור-הסרן
+  var ax = {id:90001, t:'3705', x:8, z:8, l:2, q:null, c:'#ccc'};
+  if (!TYPES['3705'] || !TYPES['3482c01']) return 'parts missing';
+  addPart(ax);
+  var axMales = worldSnaps(ax).filter(function(s){ return s.g === 'M'; }).length;
+  var wh = {id:90002, t:'3482c01', x:8, z:8, l:2, q:null, c:'#111'};
+  var snapped = connectSnap(wh, 3.0);
+  addPart(wh);
+  var wheelFem = PD.parts['3482c01'].s.filter(function(s){ return s.g === 'F'; }).length;
+  var res = 'axleMales=' + axMales + ' wheelFemales=' + wheelFem +
+            ' snapped=' + snapped + ' wheelFree=' + !!wh.free +
+            ' mag(ax,wh)=' + PD.parts['3705'].mag + ',' + PD.parts['3482c01'].mag;
+  removePart(ax); removePart(wh);
+  return res;
+};
+window.__catTest = function(){
+  openSearch();
+  searchInput.value = 'גלגל'; runSearch();
+  var heb = document.querySelectorAll('#searchResults .sr').length;
+  searchInput.value = '3701'; runSearch();
+  var byId = document.querySelectorAll('#searchResults .sr').length;
+  var chips = document.querySelectorAll('#searchChips .schip').length;
+  closeSearch();
+  return {
+    trans_wheel: translateQuery('גלגל').join(','),
+    trans_door: translateQuery('דלת 1x4').join(','),
+    cls_wheel: classifyPart('Wheel 8x17.5 with Axlehole', []).cat,
+    cls_door: classifyPart('Door 1 x 4 x 6 Frame', []).cat,
+    cls_gear_teeth: classifyPart('Technic Gear 24 Tooth', []).teeth,
+    cls_pin_mag: classifyPart('Technic Pin with Friction', []).mag,
+    gloss_brick: heGloss('Brick 2 x 4'),
+    gloss_slope: heGloss('Slope Brick 45 2 x 2'),
+    searchHeb: heb, searchById: byId, quickChips: chips
+  };
+};
+window.__demoWheels = function(){
+  setModel([]);
+  // קורה טכנית + סרנים + גלגלים, בבדיקת רינדור/הצמדה
+  var beam = {id:60001, t:'3701', x:6, z:9, l:0, q:null, c:'#c91a09'}; addPart(beam);
+  [ {t:'3705', ax:5.4}, {t:'3705', ax:9.4} ].forEach(function(){});
+  function put(t, x, z, l, col){ var p={id:nextId++, t:t, x:x, z:z, l:l, q:null, c:col}; var s=isMag(t)&&connectSnap(p,3.0); addPart(p); return {p:p, snapped:s}; }
+  var a1 = put('3705', 5, 9, 1, '#b6bcc6');
+  var w1 = put('3482c01', 5, 9, 1, '#20242b');
+  var w2 = put('3482c01', 8, 9, 1, '#20242b');
+  var door = put('60623', 12, 9, 0, '#c7a06a');
+  var win = put('60594', 3, 3, 0, '#bfe3ef');
+  camTheta = 0.7; camPhi = 1.05; updateCamera && updateCamera();
+  return {parts:parts.length, w1snap:w1.snapped, w2snap:w2.snapped};
 };
 window.__hitTest = function(x, y){
   var h = castAt(x, y);
