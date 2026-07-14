@@ -892,7 +892,7 @@ COLORS.forEach(function(c){
 
 var partsEl = document.getElementById('parts');
 var catsEl = document.getElementById('cats');
-var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['w','גלגלים 🛞'],['g','גלגלי שיניים'],['d','דלתות/חלונות'],['m','מודולים 🧩'],['c','קטלוג ⬇']];
+var CATS = [['b','לבנים'],['p','פלטות'],['s','מיוחדים'],['t','טכני'],['w','גלגלים 🛞'],['g','גלגלי שיניים'],['d','דלתות/חלונות'],['f','דמויות 🧍'],['m','מודולים 🧩'],['c','קטלוג ⬇']];
 var curCat = 'b';
 function armedLabel(){
   if (!armed) return '';
@@ -947,7 +947,12 @@ function makeChip(t){
   var chip = document.createElement('div');
   chip.className = 'chip' + (def.flat ? ' flat' : '');
   chip.dataset.t = t;
-  if (PD.parts[t].teeth){
+  if (PD.parts[t].icon){
+    var em = document.createElement('div');
+    em.className = 'gearIcon';
+    em.textContent = PD.parts[t].icon;
+    chip.appendChild(em);
+  } else if (PD.parts[t].teeth){
     var ic = document.createElement('div');
     ic.className = 'gearIcon';
     ic.textContent = '⚙';
@@ -2313,8 +2318,10 @@ window.__demoWheels = function(){
   var w2 = put('3482c01', 8, 9, 1, '#20242b');
   var door = put('60623', 12, 9, 0, '#c7a06a');
   var win = put('60594', 3, 3, 0, '#bfe3ef');
+  var fig = put('figure1', 9, 4, 0, '#3aa76d');
+  var fig2 = put('figure1', 12, 4, 0, '#d84a4a');
   camTheta = 0.7; camPhi = 1.05; updateCamera && updateCamera();
-  return {parts:parts.length, w1snap:w1.snapped, w2snap:w2.snapped};
+  return {parts:parts.length, w1snap:w1.snapped, w2snap:w2.snapped, hasFig:!!TYPES['figure1']};
 };
 window.__hitTest = function(x, y){
   var h = castAt(x, y);
