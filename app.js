@@ -2230,8 +2230,36 @@ var BUILD_SCHEMA_DOC = {
   },
   notes: '"type" may be an LDraw part id, or a part name in Hebrew or English (e.g. "לבנה 2×4", "wheel", "door"). Colors are hex strings.'
 };
+/* בונה את הפקודה המלאה שנותנים ל-Claude יחד עם התמונה (סכימה + פלטה + הנחיות) */
+function aiPromptText(extra){
+  var pal = window.BrickAPI.palette().map(function(p){
+    return '  ' + p.id + '\t' + p.name + (p.teeth ? ' (' + p.teeth + ' שיניים)' : '') + (p.mag ? ' [מגנטי]' : '');
+  }).join('\n');
+  var lines = [
+    'אתה מנוע בנייה לאפליקציית קוביות תואמות-לגו. מצורפת תמונה של דגם (או ערימת חלקים). שחזר דגם דומה ובנוי-היטב, והחזר JSON בלבד — בלי טקסט מסביב.',
+    '',
+    'מערכת צירים: לוח ' + BOARD + '×' + BOARD + ' בליטות. x,z בין 0 ל-' + (BOARD - 1) + '. l = שכבה בחצאי-פלטות (2 = פלטה, 6 = לבנה) כלפי מעלה מהלוח. color = מחרוזת hex, למשל "#c91a09".',
+    '',
+    'פורמט הפלט (build-program):',
+    '{"name":"<שם קצר>","parts":[{"type":"<מזהה או שם חלק>","x":0,"z":0,"l":0,"color":"#rrggbb"}, ...]}',
+    '',
+    '"type" = מספר חלק LDraw, או שם חלק בעברית/אנגלית ("לבנה 2×4", "wheel", "door"). מותר גם שמות אחרים מהקטלוג — הם יורדו אוטומטית.',
+    '',
+    'חלקי ברירת-מחדל זמינים (מזהה⇥שם):',
+    pal,
+    '',
+    'הנחיות:',
+    '- זהה צורה, צבעים, גדלים ומיקום מהתמונה; שחזר דגם מזוהה וניתן לבנייה.',
+    '- הנח חלקים בשכבות הגיוניות כך שיישבו זה על זה (הימנע מריחוף).',
+    '- העדף חלקי ברירת-מחדל; פנה לקטלוג רק כשצריך חלק ייחודי.',
+    '- החזר JSON תקין בלבד.'
+  ];
+  if (extra) lines.push('', 'הנחיה נוספת מהמשתמש: ' + extra);
+  return lines.join('\n');
+}
 window.BrickAPI = {
   build: runBuildProgram,
+  aiPrompt: function(extra){ return aiPromptText(extra); },
   clear: function(){ pushUndo(snapshot()); setModel([]); save(); },
   parts: function(){ return parts.map(function(p){ return { type:p.t, name:(TYPES[p.t]||{}).n, x:p.x, z:p.z, l:p.l, color:p.c, free:!!p.free }; }); },
   snapshot: function(){ return snapshot(); },
@@ -2281,6 +2309,7 @@ el('btnAI').addEventListener('click', function(){
   if (!isPro()){ openUpgrade('בנייה עם AI זמינה במנוי פרו'); return; }
   hidePanels();
   el('aiStatus').textContent = '';
+  el('btnAIBuild').hidden = !aiEndpoint();   // כפתור בנייה-אוטומטית רק כשמחובר שרת
   el('aiPanel').hidden = false;
 });
 el('btnCloseAI').addEventListener('click', function(){ el('aiPanel').hidden = true; });
@@ -2290,29 +2319,34 @@ el('aiImage').addEventListener('change', function(){
   el('aiFileLabel').textContent = '📷 ' + f.name;
   fileToDataURL(f).then(function(u){ var im = el('aiPreview'); im.src = u; im.hidden = false; });
 });
+/* שלב 1 — העתקת הפקודה ל-AI (סכימה + פלטה + הנחיה) */
+el('btnAICopy').addEventListener('click', function(){
+  var txt = aiPromptText(el('aiPrompt').value.trim());
+  var done = function(){ el('aiStatus').textContent = '✓ הפקודה הועתקה — הדביקו ב-Claude יחד עם התמונה'; toast('📋 הפקודה הועתקה'); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, function(){ el('aiProgram').value = txt; el('aiStatus').textContent = 'הפקודה מוצגת למטה — העתיקו ידנית'; });
+  } else { el('aiProgram').value = txt; el('aiStatus').textContent = 'העתיקו את הטקסט למטה'; }
+});
+/* שלב 2 — הרצת ה-JSON שהמודל החזיר */
+el('btnAIRun').addEventListener('click', function(){
+  var v = el('aiProgram').value.trim();
+  if (!v){ el('aiStatus').textContent = 'הדביקו קודם תוכנית JSON'; return; }
+  try { runBuildProgram(v); el('aiPanel').hidden = true; }
+  catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
+});
+/* בנייה אוטומטית — כשמחובר שרת */
 el('btnAIBuild').addEventListener('click', function(){
   var status = el('aiStatus');
   var f = el('aiImage').files && el('aiImage').files[0];
   var prompt = el('aiPrompt').value.trim();
   if (!f && !prompt){ status.textContent = 'הוסיפו תמונה או הנחיה'; return; }
-  status.textContent = 'חושב…';
+  status.textContent = 'ה-AI חושב…';
   var imgP = f ? fileToDataURL(f) : Promise.resolve(null);
   imgP.then(function(u){ return requestAiBuild(u, prompt); }).then(function(prog){
-    if (!prog){
-      // אין שרת — עוברים למצב הדבקת-תוכנית
-      status.textContent = '';
-      el('aiPasteHint').hidden = false;
-      el('aiProgram').hidden = false;
-      el('btnAIRun').hidden = false;
-      return;
-    }
+    if (!prog){ status.textContent = 'אין שרת מחובר — השתמשו בשני הצעדים הידניים למטה'; return; }
     runBuildProgram(prog);
     el('aiPanel').hidden = true;
   }).catch(function(e){ status.textContent = 'שגיאה: ' + e.message; });
-});
-el('btnAIRun').addEventListener('click', function(){
-  try { runBuildProgram(el('aiProgram').value); el('aiPanel').hidden = true; }
-  catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
 });
 
 el('btnAccount').addEventListener('click', function(){
