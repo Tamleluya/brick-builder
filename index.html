@@ -197,6 +197,28 @@
     background:var(--panel);backdrop-filter:blur(12px);box-shadow:0 10px 34px rgba(0,0,0,.5);}
   .catMenuTtl{font-size:12px;color:var(--muted);}
   .catMenuRow{display:flex;flex-wrap:wrap;gap:6px;max-width:320px;}
+  /* קטגוריות נעולות (חינם) */
+  .cat.locked{opacity:.55;}
+  .cat.locked::after{content:"🔒";font-size:10px;margin-inline-start:3px;}
+  #btnAI.locked{opacity:.7;}
+  #tierBadge{font-size:12px;font-weight:700;}
+  body.is-pro #tierBadge{color:var(--accent);}
+  /* אזור אישי + שדרוג */
+  .acctRow{display:flex;justify-content:space-between;align-items:center;padding:8px 2px;
+    border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;}
+  .acctRow b{color:var(--text);}
+  .proList{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--text);padding:4px 0;}
+  /* בנה עם AI */
+  .aiFile{display:flex;align-items:center;justify-content:center;cursor:pointer;
+    border:1px dashed rgba(255,255,255,.22);border-radius:12px;padding:14px;color:var(--muted);
+    font-size:13px;background:var(--panel-soft);}
+  #aiPreview{max-width:100%;max-height:150px;border-radius:10px;object-fit:contain;align-self:center;}
+  #aiPrompt,#aiProgram{width:100%;box-sizing:border-box;border:0;border-radius:12px;
+    background:var(--panel-soft);color:var(--text);padding:11px 13px;font-family:inherit;font-size:14px;}
+  #aiProgram{min-height:88px;resize:vertical;direction:ltr;text-align:left;font-size:12px;}
+  #aiPrompt:focus,#aiProgram:focus{outline:2px solid var(--accent);}
+  .abtn.wide{width:100%;justify-content:center;}
+  #aiPanel .searchBox,#accountPanel .searchBox,#upgradePanel .searchBox{display:flex;flex-direction:column;gap:9px;}
   .searchResults{max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
   .sr{
     display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;
@@ -243,6 +265,8 @@
   </div>
   <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
   <div class="spacer"></div>
+  <button class="tbtn" id="btnAI" title="בנה עם AI">🤖</button>
+  <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
   <button class="tbtn wide" id="btnUser" title="החלפת משתמש">👤</button>
   <button class="tbtn" id="btnGallery" title="הדגמים שלי">📁</button>
   <button class="tbtn" id="btnCam" title="מצב סיבוב מבט">🧭</button>
@@ -339,6 +363,61 @@
     <div class="searchResults" id="usersList"></div>
     <button class="abtn" id="btnDemo">🏠 טען דגם לדוגמה (עם גלגלי שיניים)</button>
     <div class="searchMeta">אפליקציה עצמאית שאינה קשורה לקבוצת LEGO ואינה ממומנת או מאושרת על ידה. LEGO® הוא סימן מסחר של קבוצת LEGO. חלקים: LDraw.org (CC BY 4.0).</div>
+  </div>
+</div>
+
+<div class="search" id="aiPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">🤖 בנה עם AI</b>
+      <button class="tbtn" id="btnCloseAI">✕</button>
+    </div>
+    <div class="searchMeta">העלו תמונה של דגם ותנו הנחיה — ה-AI ירכיב אותו מהקוביות. בגרסה זו אפשר גם להדביק "תוכנית בנייה" (JSON) שנוצרה ע"י מודל.</div>
+    <label class="aiFile" id="aiDrop">
+      <input type="file" id="aiImage" accept="image/*" hidden>
+      <span id="aiFileLabel">📷 בחרו תמונה (רשות)</span>
+    </label>
+    <img id="aiPreview" alt="" hidden>
+    <input id="aiPrompt" type="text" placeholder="הנחיה — למשל: מכונית אדומה קטנה עם 4 גלגלים" autocomplete="off">
+    <button class="abtn wide" id="btnAIBuild">✨ בנה</button>
+    <div class="searchMeta" id="aiPasteHint" hidden>אין עדיין שרת AI מחובר — הדביקו כאן תוכנית-בנייה (JSON) והריצו:</div>
+    <textarea id="aiProgram" hidden placeholder='{"parts":[{"type":"3020","x":8,"z":8,"l":0,"color":"#c91a09"}]}'></textarea>
+    <button class="abtn wide" id="btnAIRun" hidden>▶ הרץ תוכנית</button>
+    <div class="searchMeta" id="aiStatus"></div>
+  </div>
+</div>
+
+<div class="search" id="accountPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">אזור אישי</b>
+      <button class="tbtn" id="btnCloseAccount">✕</button>
+    </div>
+    <div class="acctRow"><span>משתמש</span><b id="acctName">אורח</b></div>
+    <div class="acctRow"><span>רמת בנייה</span><b id="acctTier">חינם</b></div>
+    <div class="acctRow"><span>דגמים שמורים</span><b id="acctModels">0</b></div>
+    <button class="abtn wide" id="btnAcctUpgrade">⭐ שדרג לפרו</button>
+    <button class="abtn wide" id="btnAcctModels">📁 הדגמים שלי</button>
+    <button class="abtn wide" id="btnAcctSwitch">👤 החלף משתמש</button>
+    <div class="searchMeta" id="acctNote"></div>
+  </div>
+</div>
+
+<div class="search" id="upgradePanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">⭐ מנוי פרו</b>
+      <button class="tbtn" id="btnCloseUpgrade">✕</button>
+    </div>
+    <div class="searchMeta" id="upgradeReason"></div>
+    <div class="proList">
+      <div>✓ כל קטלוג החלקים (אלפי חלקים)</div>
+      <div>✓ גלגלים, חלקים טכניים, גלגלי-שיניים, דלתות וחלונות</div>
+      <div>✓ בנייה עם AI מתמונה</div>
+      <div>✓ דמויות וחלקים מיוחדים</div>
+    </div>
+    <button class="abtn wide" id="btnDoUpgrade">⭐ הפעל פרו</button>
+    <div class="searchMeta">בגרסת האב-טיפוס ההפעלה מיידית ומקומית. תשלום אמיתי יתווסף עם השרת.</div>
   </div>
 </div>
 

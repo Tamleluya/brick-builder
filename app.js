@@ -933,6 +933,7 @@ CATS.forEach(function(c){
   b.dataset.c = c[0];
   b.textContent = c[1];
   b.addEventListener('click', function(){
+    if (!tierAllows(c[0])){ openUpgrade('הקטגוריה "' + c[1] + '" זמינה במנוי פרו'); return; }
     curCat = c[0];
     syncPalette();
     // טאב הקטלוג ריק עד שמורידים חלקים — פותחים ישר את החיפוש
@@ -1388,7 +1389,10 @@ function openSearch(){
   searchInput.focus();
 }
 function closeSearch(){ searchPanel.hidden = true; }
-document.getElementById('btnSearch').addEventListener('click', openSearch);
+document.getElementById('btnSearch').addEventListener('click', function(){
+  if (typeof isPro === 'function' && !isPro()){ openUpgrade('חיפוש בקטלוג המלא זמין במנוי פרו'); return; }
+  openSearch();
+});
 document.getElementById('btnCloseSearch').addEventListener('click', closeSearch);
 searchPanel.addEventListener('click', function(e){ if (e.target === searchPanel) closeSearch(); });
 function runSearch(){
@@ -2136,9 +2140,214 @@ if (sharedModel){
   setModel([]); // התחלה בלוח נקי; דגם לדוגמה זמין בתפריט 👤
   toast('לוח נקי ומוכן — בחרו חלק למטה והקישו על הלוח');
 }
+/* ==================== רמות בנייה (חינם / פרו) ==================== */
+/* אב-טיפוס בצד-לקוח: האכיפה כאן היא לחוויית-משתמש בלבד; אכיפה אמיתית תגיע עם השרת. */
+var FREE_CATS = {b:1, p:1, s:1, m:1};   // חינם: לבנים, פלטות, מיוחדים, מודולים
+function getTier(){ try { return localStorage.getItem('bb-tier') === 'pro' ? 'pro' : 'free'; } catch(e){ return 'free'; } }
+function setTier(t){ try { localStorage.setItem('bb-tier', t === 'pro' ? 'pro' : 'free'); } catch(e){} syncTierUI(); }
+function isPro(){ return getTier() === 'pro'; }
+function tierAllows(cat){ return isPro() || !!FREE_CATS[cat]; }
+function syncTierUI(){
+  var pro = isPro();
+  document.body.classList.toggle('is-pro', pro);
+  var badge = document.getElementById('tierBadge');
+  if (badge) badge.textContent = pro ? '⭐ פרו' : 'חינם';
+  // נעילת קטגוריות פרימיום בסרגל
+  Array.from(catsEl.children).forEach(function(el){
+    var locked = !tierAllows(el.dataset.c);
+    el.classList.toggle('locked', locked);
+  });
+  var aiBtn = document.getElementById('btnAI');
+  if (aiBtn) aiBtn.classList.toggle('locked', !pro);
+}
+function openUpgrade(reason){
+  var p = document.getElementById('upgradePanel');
+  if (!p) return;
+  var r = document.getElementById('upgradeReason');
+  if (r) r.textContent = reason || '';
+  p.hidden = false;
+}
+function closeUpgrade(){ var p = document.getElementById('upgradePanel'); if (p) p.hidden = true; }
+
+/* ==================== BrickAPI — המשטח שה-LLM מפעיל ==================== */
+/* פותר שם-חלק לכל צורה: מזהה LDraw טעון / מזהה בקטלוג / שם בעברית או אנגלית */
+function resolveType(name){
+  if (name == null) return null;
+  var s = String(name).trim();
+  if (!s) return null;
+  if (TYPES[s] || PD.parts[s]) return s;                 // מזהה מדויק (טעון או ברירת-מחדל)
+  // 1) התאמה ישירה של השם (עברית/אנגלית) לחלק שכבר טעון — מעדיפים לא להוריד מהרשת
+  var raw = normKey(s);
+  if (raw){
+    for (var id0 in PD.parts){ if (normKey(PD.parts[id0].n).indexOf(raw) >= 0) return id0; }
+  }
+  var terms = translateQuery(s.toLowerCase()).map(normKey).filter(Boolean);
+  if (!terms.length) return null;
+  // 2) התאמה מתורגמת מול חלקים טעונים (שם + שם אנגלי מקורי)
+  for (var id in PD.parts){
+    var nk = normKey(PD.parts[id].n) + ' ' + normKey(PD.parts[id].en || '');
+    if (terms.every(function(t){ return nk.indexOf(t) >= 0; })) return id;
+  }
+  for (var i=0;i<catalog.length;i++){
+    if (terms.every(function(t){ return normKey(catalog[i].n).indexOf(t) >= 0; })) return catalog[i].id;
+  }
+  return null;
+}
+/* מריץ "תוכנית בנייה" — JSON שמייצר LLM — ובונה את הדגם */
+function runBuildProgram(prog){
+  if (typeof prog === 'string'){
+    try { prog = JSON.parse(prog); } catch(e){ throw new Error('JSON לא תקין: ' + e.message); }
+  }
+  if (!prog || !Array.isArray(prog.parts)) throw new Error('התוכנית חייבת לכלול מערך "parts"');
+  var list = [], id = 1, unresolved = [];
+  prog.parts.forEach(function(p){
+    var t = resolveType(p.type != null ? p.type : p.t);
+    if (!t){ unresolved.push(p.type != null ? p.type : p.t); return; }
+    var x = Math.round(Number(p.x) || 0), z = Math.round(Number(p.z) || 0);
+    var l = Math.max(0, Math.min(MAXH, Math.round(Number(p.l != null ? p.l : p.layer) || 0)));
+    x = Math.max(0, Math.min(BOARD - 1, x)); z = Math.max(0, Math.min(BOARD - 1, z));
+    list.push({ id: id++, t: t, x: x, z: z, l: l, q: (Array.isArray(p.q) && p.q.length === 4) ? p.q : null, c: p.color || p.c || (defColor(t) || '#c91a09') });
+  });
+  pushUndo(snapshot());
+  setModel(list);
+  save();
+  toast('🤖 נבנה דגם AI · ' + list.length + ' חלקים' + (unresolved.length ? ' · ' + unresolved.length + ' לא זוהו' : ''));
+  return { placed: list.length, unresolved: unresolved };
+}
+/* תיעוד הסכימה — כדי שה-LLM יידע כיצד להפעיל את הבונה */
+var BUILD_SCHEMA_DOC = {
+  format: 'build-program',
+  description: 'JSON model spec. Each part sits on a 32×32 stud grid (x,z 0..31), layer l counts half-plate units up from the board.',
+  units: { grid: '1 = 1 stud', layer: '2 = one plate, 6 = one brick', board: 32 },
+  example: {
+    name: 'Small red car',
+    parts: [
+      { type: '3020', x: 8, z: 8, l: 0, color: '#c91a09' },
+      { type: '3705', x: 7, z: 8, l: 1, color: '#b6bcc6' },
+      { type: 'גלגל רכב', x: 6, z: 8, l: 1 },
+      { type: 'גלגל רכב', x: 10, z: 8, l: 1 }
+    ]
+  },
+  notes: '"type" may be an LDraw part id, or a part name in Hebrew or English (e.g. "לבנה 2×4", "wheel", "door"). Colors are hex strings.'
+};
+window.BrickAPI = {
+  build: runBuildProgram,
+  clear: function(){ pushUndo(snapshot()); setModel([]); save(); },
+  parts: function(){ return parts.map(function(p){ return { type:p.t, name:(TYPES[p.t]||{}).n, x:p.x, z:p.z, l:p.l, color:p.c, free:!!p.free }; }); },
+  snapshot: function(){ return snapshot(); },
+  palette: function(){ return TYPE_ORDER.filter(function(t){ return TYPES[t]; }).map(function(t){ var p = PD.parts[t]; return { id:t, name:p.n, cat:p.cat, w:p.w, d:p.d, h:p.h, mag:!!p.mag, teeth:p.teeth||0 }; }); },
+  catalog: function(q, limit){
+    var out = [], n = limit || 40;
+    if (!q) return out;
+    var terms = translateQuery(String(q).toLowerCase()).map(normKey).filter(Boolean);
+    for (var i=0;i<catalog.length && out.length<n;i++){
+      var nk = normKey(catalog[i].n);
+      if ((terms.length && terms.every(function(t){ return nk.indexOf(t) >= 0; })) || catalog[i].id.indexOf(normKey(q)) === 0)
+        out.push({ id:catalog[i].id, name:catalog[i].n, he:heGloss(catalog[i].n) });
+    }
+    return out;
+  },
+  board: function(){ return BOARD; },
+  schema: function(){ return BUILD_SCHEMA_DOC; }
+};
+
+/* ==================== "בנה עם AI" — תמונה + הנחיה ==================== */
+function aiEndpoint(){ try { return localStorage.getItem('bb-ai-endpoint') || ''; } catch(e){ return ''; } }
+function fileToDataURL(file){
+  return new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+/* שולח לשרת (כשמוגדר) ומקבל תוכנית-בנייה; אחרת מחזיר null כדי לעבור למצב הדבקה ידנית */
+function requestAiBuild(imageDataUrl, prompt){
+  var url = aiEndpoint();
+  if (!url) return Promise.resolve(null);
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: imageDataUrl || null, prompt: prompt || '', palette: window.BrickAPI.palette(), schema: BUILD_SCHEMA_DOC, board: BOARD })
+  }).then(function(r){ if (!r.ok) throw new Error('שגיאת שרת ' + r.status); return r.json(); })
+    .then(function(j){ return j.program || j; });
+}
+
+/* ---------- חיווט כפתורים: AI / אזור אישי / שדרוג ---------- */
+function el(id){ return document.getElementById(id); }
+function hidePanels(){ ['aiPanel','accountPanel','upgradePanel','galleryPanel','usersPanel','searchPanel'].forEach(function(i){ var e = el(i); if (e) e.hidden = true; }); }
+
+el('btnAI').addEventListener('click', function(){
+  if (!isPro()){ openUpgrade('בנייה עם AI זמינה במנוי פרו'); return; }
+  hidePanels();
+  el('aiStatus').textContent = '';
+  el('aiPanel').hidden = false;
+});
+el('btnCloseAI').addEventListener('click', function(){ el('aiPanel').hidden = true; });
+el('aiImage').addEventListener('change', function(){
+  var f = this.files && this.files[0];
+  if (!f) return;
+  el('aiFileLabel').textContent = '📷 ' + f.name;
+  fileToDataURL(f).then(function(u){ var im = el('aiPreview'); im.src = u; im.hidden = false; });
+});
+el('btnAIBuild').addEventListener('click', function(){
+  var status = el('aiStatus');
+  var f = el('aiImage').files && el('aiImage').files[0];
+  var prompt = el('aiPrompt').value.trim();
+  if (!f && !prompt){ status.textContent = 'הוסיפו תמונה או הנחיה'; return; }
+  status.textContent = 'חושב…';
+  var imgP = f ? fileToDataURL(f) : Promise.resolve(null);
+  imgP.then(function(u){ return requestAiBuild(u, prompt); }).then(function(prog){
+    if (!prog){
+      // אין שרת — עוברים למצב הדבקת-תוכנית
+      status.textContent = '';
+      el('aiPasteHint').hidden = false;
+      el('aiProgram').hidden = false;
+      el('btnAIRun').hidden = false;
+      return;
+    }
+    runBuildProgram(prog);
+    el('aiPanel').hidden = true;
+  }).catch(function(e){ status.textContent = 'שגיאה: ' + e.message; });
+});
+el('btnAIRun').addEventListener('click', function(){
+  try { runBuildProgram(el('aiProgram').value); el('aiPanel').hidden = true; }
+  catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
+});
+
+el('btnAccount').addEventListener('click', function(){
+  hidePanels();
+  el('acctName').textContent = curUser || 'אורח';
+  el('acctTier').textContent = isPro() ? '⭐ פרו' : 'חינם';
+  el('acctModels').textContent = getGal().length;
+  el('btnAcctUpgrade').style.display = isPro() ? 'none' : '';
+  el('acctNote').textContent = isPro() ? 'יש לך גישה מלאה לכל החלקים ול-AI.' : 'המנוי פותח את כל הקטלוג, הגלגלים, החלקים הטכניים ובנייה עם AI.';
+  el('accountPanel').hidden = false;
+});
+el('btnCloseAccount').addEventListener('click', function(){ el('accountPanel').hidden = true; });
+el('btnAcctUpgrade').addEventListener('click', function(){ el('accountPanel').hidden = true; openUpgrade(''); });
+el('btnAcctModels').addEventListener('click', function(){ el('accountPanel').hidden = true; el('btnGallery').click(); });
+el('btnAcctSwitch').addEventListener('click', function(){ el('accountPanel').hidden = true; el('btnUser').click(); });
+
+el('btnCloseUpgrade').addEventListener('click', closeUpgrade);
+el('btnDoUpgrade').addEventListener('click', function(){
+  setTier('pro'); closeUpgrade();
+  toast('⭐ מנוי פרו הופעל — כל החלקים וה-AI פתוחים');
+});
+
 syncTop();
 requestAnimationFrame(tick);
+syncTierUI();
 window.__ready = true;
+window.__isPro = function(){ return isPro(); };
+window.__buildTest = function(){
+  var res = runBuildProgram({ name:'test', parts:[
+    { type:'3020', x:8, z:8, l:0, color:'#c91a09' },
+    { type:'לבנה 2×4', x:8, z:8, l:2, color:'#0055bf' },
+    { type:'wheel', x:6, z:8, l:1 }
+  ]});
+  return { placed: res.placed, unresolved: res.unresolved, partCount: parts.length };
+};
 window.__partCount = function(){ return parts.length; };
 window.__selQ = function(){ return sel ? (sel.q || null) : null; };
 window.__selL = function(){ return sel ? sel.l : -1; };
