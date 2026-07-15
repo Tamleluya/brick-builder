@@ -270,6 +270,54 @@
   .chip.on{background:var(--accent);}
   .chip.on small{color:var(--accent-ink);font-weight:600;}
   .chip.on .dot{background:var(--accent-ink);}
+
+  /* שלט ניווט: כפתורי הגבהה/הנמכה */
+  .mvb[data-dir="up"]{grid-area:1/1}
+  .mvb[data-dir="down"]{grid-area:3/1}
+  .mvb.up,.mvb.down{color:var(--accent);font-size:16px;font-weight:700;}
+
+  /* לחצן "הוסף חלק" תחתון קבוע */
+  .addBot{
+    position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 158px);
+    z-index:11;width:46px;min-width:46px;height:46px;font-size:22px;
+    background:var(--accent);color:var(--accent-ink);
+    box-shadow:0 6px 20px rgba(10,20,30,.3);
+  }
+  .addBot small{position:absolute;bottom:-16px;font-size:9px;color:var(--muted);white-space:nowrap;left:50%;transform:translateX(-50%);}
+
+  /* חלון "הוסף חלק" גדול — כרטיסים עם תמונה */
+  .addGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px;max-height:56vh;overflow-y:auto;padding:2px;}
+  .addCard{position:relative;border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:12px;padding:8px 6px 7px;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:inherit;}
+  .addCard:active{transform:scale(.96);}
+  .addIco{width:62px;height:52px;image-rendering:auto;}
+  .addNm{font-size:11.5px;text-align:center;line-height:1.25;max-height:2.5em;overflow:hidden;}
+  .addDim{font-size:11px;font-weight:700;color:var(--accent);direction:ltr;font-variant-numeric:tabular-nums;}
+  .addId{font-size:9.5px;color:var(--muted);direction:ltr;}
+  .addSim{position:absolute;top:5px;left:5px;width:22px;height:22px;border:0;border-radius:50%;
+    background:rgba(15,22,30,.72);color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0;}
+  .addSim:active{background:var(--accent);color:var(--accent-ink);}
+  .addEmpty{grid-column:1/-1;color:var(--muted);font-size:12.5px;text-align:center;padding:22px 8px;}
+  .addCard.loading{opacity:.5;pointer-events:none;}
+
+  /* חלון "הוסף חלק" קטן — bottom-sheet רשימת מספרים בלבד */
+  .addMini{
+    position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+    max-width:520px;margin:0 auto;z-index:31;padding:10px;display:flex;flex-direction:column;gap:8px;
+  }
+  .addMini[hidden]{display:none;}
+  .addMiniHead{display:flex;gap:8px;}
+  .addMiniHead input{flex:1;border:0;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;
+    background:var(--panel-soft);color:var(--text);outline:none;min-width:0;}
+  .addMiniHead input:focus{outline:2px solid var(--accent);}
+  .addMiniList{display:flex;flex-direction:column;gap:2px;max-height:46vh;overflow-y:auto;}
+  .miniRow{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;cursor:pointer;
+    background:transparent;border:0;font-family:inherit;text-align:right;color:var(--text);width:100%;}
+  .miniRow:active{background:var(--panel-soft);}
+  .miniRow .mId{font-size:11px;color:var(--accent);min-width:52px;direction:ltr;text-align:left;font-variant-numeric:tabular-nums;flex-shrink:0;}
+  .miniRow .mDim{font-size:12px;font-weight:700;direction:ltr;min-width:52px;font-variant-numeric:tabular-nums;flex-shrink:0;}
+  .miniRow .mNm{font-size:12px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left;}
+  .miniRow.loading{opacity:.5;pointer-events:none;}
 </style>
 
 <canvas id="c"></canvas>
@@ -282,6 +330,7 @@
   <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
   <div class="spacer"></div>
   <button class="tbtn" id="btnAI" title="בנה עם AI">🤖</button>
+  <button class="tbtn wide" id="btnAddTop" title="הוסף חלק — חלון גדול עם תמונות">➕ חלק</button>
   <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
   <button class="tbtn wide" id="btnUser" title="החלפת משתמש">👤</button>
   <button class="tbtn" id="btnGallery" title="הדגמים שלי">📁</button>
@@ -297,12 +346,16 @@
 </div>
 
 <div class="movepad pill" id="movePad" hidden>
+  <button class="mvb up" data-dir="up" aria-label="הגבה">⬆</button>
   <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
   <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
   <span class="mvhub">✥</span>
   <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
+  <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
   <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
 </div>
+
+<button class="tbtn addBot" id="btnAddBot" title="הוסף חלק — רשימה מהירה">➕<small>הוסף</small></button>
 
 <div id="boxSel"></div>
 
@@ -466,6 +519,29 @@
   </div>
 </div>
 
+<div class="search" id="addPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">➕ הוסף חלק</b>
+      <button class="tbtn" id="btnCloseAdd">✕</button>
+    </div>
+    <div class="searchHead">
+      <input id="addInput" type="search" placeholder="שם, מידה (2x4) או מספר — למשל: לבנה, גלגל, 3001" autocomplete="off">
+    </div>
+    <div class="searchChips" id="addChips"></div>
+    <div class="searchMeta" id="addMeta"></div>
+    <div class="addGrid" id="addGrid"></div>
+  </div>
+</div>
+
+<div class="addMini pill" id="addMini" hidden>
+  <div class="addMiniHead">
+    <input id="miniInput" type="search" placeholder="חיפוש מהיר לפי שם/מידה/מספר…" autocomplete="off">
+    <button class="tbtn" id="btnCloseMini">✕</button>
+  </div>
+  <div class="addMiniList" id="miniList"></div>
+</div>
+
 <div class="search" id="searchPanel" hidden>
   <div class="searchBox pill">
     <div class="searchHead">
@@ -491,5 +567,3 @@
 <script src="parts-data.js"></script>
 <script src="catalog.js"></script>
 <script src="app.js"></script>
-</body>
-</html>

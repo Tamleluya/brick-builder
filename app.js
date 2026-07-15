@@ -878,6 +878,7 @@ document.getElementById('btnPaint').addEventListener('click', function(){
   if (!selIds.length) return;
   var pop = document.getElementById('colorPop');
   pop.hidden = !pop.hidden;
+  if (!pop.hidden && selIds.length > 1) toast('בחירת צבע תצבע את כל ' + selIds.length + ' החלקים הנבחרים');
 });
 document.getElementById('btnMulti').addEventListener('click', function(){
   multiMode = !multiMode;
@@ -1463,6 +1464,220 @@ function runSearch(){
 }
 searchInput.addEventListener('input', runSearch);
 
+/* ---------- הוסף חלק: שם+מידות+תמונה, "דומים", חלון גדול/קטן ---------- */
+/* מידות: מ-parts-data אם נטען, אחרת מנתחים מהשם ("Brick 2 x 4" → 2×4) */
+function parseDims(name){
+  var m = String(name || '').match(/(\d+)\s*[x×]\s*(\d+)(?:\s*[x×]\s*(\d+))?/i);
+  if (!m) return null;
+  return { w:+m[1], d:+m[2], h:m[3] ? +m[3] : null };
+}
+function partDims(id){
+  var p = PD.parts[id];
+  if (p && p.w) return { w:p.w, d:p.d, h:p.h };
+  return parseDims(catalogName(id));
+}
+function dimLabel(id){
+  var d = partDims(id);
+  if (!d) return '';
+  return d.w + '×' + d.d + (d.h ? '×' + d.h : '');
+}
+/* משפחת החלק — מילת-מפתח מהשם, ספציפי לפני כללי, לצורך "דומים" */
+var FAMILY_KEYS = ['baseplate','minifig','windscreen','liftarm','bracket','antenna',
+  'technic','ladder','fence','hinge','wedge','slope','plate','brick','tile','wheel',
+  'tyre','tire','gear','axle','panel','door','window','glass','arch','cone','dish',
+  'wing','round','bar','flag','pin','beam'];
+function partName(id){ var p = PD.parts[id]; return ((p && (p.en || p.n)) || catalogName(id) || '').toLowerCase(); }
+function partFamily(id){
+  var nm = partName(id);
+  for (var i=0;i<FAMILY_KEYS.length;i++) if (nm.indexOf(FAMILY_KEYS[i]) >= 0) return FAMILY_KEYS[i];
+  return '';
+}
+/* צבע התמונה לפי משפחה */
+var FAM_COL = {brick:'#c91a09',plate:'#0055bf',tile:'#a0a5a9',slope:'#237841',wedge:'#237841',
+  wheel:'#1b2a34',tyre:'#1b2a34',tire:'#1b2a34',gear:'#6c6e72',axle:'#9c9c9c',pin:'#1b2a34',
+  door:'#8a5a2b',window:'#7ec0e8',glass:'#7ec0e8',windscreen:'#7ec0e8',arch:'#c91a09',
+  cone:'#f2cd37',dish:'#a0a5a9',wing:'#0055bf',baseplate:'#237841',bracket:'#a0a5a9',
+  panel:'#a0a5a9',round:'#f2cd37',beam:'#f2cd37',liftarm:'#f2cd37',technic:'#616365'};
+/* ציור תמונת חלק — פלטת בליטות לפי w×d בצבע המשפחה */
+function drawStudIcon(cv, id, size){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = size * dpr; cv.height = Math.round(size * 0.82) * dpr;
+  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  var W = size, H = size * 0.82;
+  var dim = partDims(id) || {w:2, d:2, h:1};
+  var cols = Math.max(1, Math.min(dim.w || 2, 8));
+  var rows = Math.max(1, Math.min(dim.d || 2, 8));
+  var col = FAM_COL[partFamily(id)] || '#8a94a0';
+  var pad = 6, gap = 2;
+  var cell = Math.min((W - pad*2) / cols, (H - pad*2) / rows, 15);
+  var bw = cell*cols + gap*(cols-1), bh = cell*rows + gap*(rows-1);
+  var ox = (W - bw)/2, oy = (H - bh)/2;
+  // גוף הפלטה
+  ctx.fillStyle = col;
+  var r = 4;
+  ctx.beginPath();
+  ctx.moveTo(ox-3+r, oy-3); ctx.arcTo(ox+bw+3, oy-3, ox+bw+3, oy+bh+3, r);
+  ctx.arcTo(ox+bw+3, oy+bh+3, ox-3, oy+bh+3, r); ctx.arcTo(ox-3, oy+bh+3, ox-3, oy-3, r);
+  ctx.arcTo(ox-3, oy-3, ox+bw+3, oy-3, r); ctx.fill();
+  // בליטות
+  for (var i=0;i<cols;i++) for (var j=0;j<rows;j++){
+    var cx = ox + i*(cell+gap) + cell/2, cy = oy + j*(cell+gap) + cell/2;
+    ctx.beginPath(); ctx.arc(cx, cy, cell*0.32, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, cell*0.26, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.stroke();
+  }
+}
+/* חלקים "דומים" — אותה משפחה + מידות קרובות + שיתוף מילים */
+function similarParts(refId, limit){
+  var rd = partDims(refId), rf = partFamily(refId);
+  var rtok = partName(refId).split(/[^a-z0-9]+/).filter(function(w){ return w.length > 2; });
+  var scored = [];
+  for (var i=0;i<catalog.length;i++){
+    var c = catalog[i];
+    if (c.id === refId) continue;
+    var s = 0;
+    var cf = partFamily(c.id);
+    if (rf && cf === rf) s += 6;
+    var d = parseDims(c.n);
+    if (rd && d) s += Math.max(0, 6 - (Math.abs(rd.w-d.w) + Math.abs(rd.d-d.d)) - ((rd.h&&d.h) ? Math.abs(rd.h-d.h)*0.5 : 0));
+    if (rtok.length){
+      var cn = c.n.toLowerCase();
+      for (var k=0;k<rtok.length;k++) if (cn.indexOf(rtok[k]) >= 0) s += 1;
+    }
+    if (s > 0) scored.push({ c:c, s:s });
+  }
+  scored.sort(function(a,b){ return b.s - a.s; });
+  return scored.slice(0, limit || 48).map(function(x){ return x.c; });
+}
+/* חיפוש בקטלוג (משותף לחלון הגדול והקטן) */
+function addSearch(raw, limit){
+  raw = (raw || '').trim();
+  var out = [];
+  if (raw.length < 2) return out;
+  var terms = translateQuery(raw.toLowerCase()).map(normKey).filter(Boolean);
+  var nid = normKey(raw);
+  for (var i=0;i<catalog.length && out.length<(limit||60);i++){
+    var c = catalog[i], nk = normKey(c.n);
+    var idHit = c.id.toLowerCase().indexOf(nid) === 0;
+    var nameHit = terms.length && terms.every(function(t){ return nk.indexOf(t) >= 0; });
+    if (idHit || nameHit) out.push(c);
+  }
+  return out;
+}
+/* חימוש חלק מהקטלוג (מוריד אם צריך) */
+function armCatalogPart(id, name, onDone){
+  if (TYPES[id]){ armed = id; curCat = PD.parts[id].cat; selectPart(null); syncPalette(); if (onDone) onDone(true); return; }
+  buildRemotePart(id, name || catalogName(id)).then(function(){
+    recordMyPart(id);
+    armed = id; curCat = PD.parts[id].cat; selectPart(null); syncPalette(); vibrate(9);
+    toast('נוסף · הקישו על הלוח כדי להניח. לחיצה ארוכה על החלק בפלטה מעבירה קטגוריה');
+    if (onDone) onDone(true);
+  }).catch(function(){ if (onDone) onDone(false); });
+}
+
+/* ===== חלון גדול (מלמעלה) — כרטיסים עם תמונות ===== */
+var addPanel = document.getElementById('addPanel');
+var addGrid = document.getElementById('addGrid');
+var addInput = document.getElementById('addInput');
+var addMeta = document.getElementById('addMeta');
+var addChips = document.getElementById('addChips');
+function addCard(c){
+  var card = document.createElement('button');
+  card.className = 'addCard';
+  var cv = document.createElement('canvas'); cv.className = 'addIco';
+  drawStudIcon(cv, c.id, 62);
+  var nm = document.createElement('span'); nm.className = 'addNm'; nm.textContent = heGloss(c.n) || c.n;
+  var dl = dimLabel(c.id);
+  var dm = document.createElement('span'); dm.className = 'addDim'; dm.textContent = dl || '—';
+  var pid = document.createElement('span'); pid.className = 'addId'; pid.textContent = c.id;
+  var sim = document.createElement('button'); sim.className = 'addSim'; sim.textContent = '≈'; sim.title = 'הצג דומים';
+  sim.addEventListener('click', function(ev){
+    ev.stopPropagation();
+    addMeta.textContent = 'דומים ל־' + (heGloss(c.n) || c.n) + ' (' + c.id + ')';
+    renderAddGrid(similarParts(c.id, 48));
+    addInput.value = '';
+  });
+  card.appendChild(sim); card.appendChild(cv); card.appendChild(nm); card.appendChild(dm); card.appendChild(pid);
+  card.addEventListener('click', function(){
+    if (TYPES[c.id]){ armCatalogPart(c.id, c.n); closeAdd(); return; }
+    card.classList.add('loading'); nm.textContent = 'מוריד…';
+    armCatalogPart(c.id, c.n, function(ok){
+      if (ok){ closeAdd(); }
+      else { card.classList.remove('loading'); nm.textContent = heGloss(c.n) || c.n; addMeta.textContent = 'ההורדה נכשלה — נסו בגרסת האתר'; }
+    });
+  });
+  return card;
+}
+function renderAddGrid(list){
+  addGrid.innerHTML = '';
+  if (!list.length){ var e = document.createElement('div'); e.className = 'addEmpty'; e.textContent = 'אין תוצאות — נסו מונח אחר'; addGrid.appendChild(e); return; }
+  list.forEach(function(c){ addGrid.appendChild(addCard(c)); });
+}
+function openAdd(){
+  addPanel.hidden = false;
+  addChips.innerHTML = '';
+  QUICK.forEach(function(q){
+    var b = document.createElement('button'); b.className = 'schip'; b.textContent = q[0];
+    b.addEventListener('click', function(){ addInput.value = q[1]; runAddSearch(); });
+    addChips.appendChild(b);
+  });
+  addMeta.textContent = catalog.length.toLocaleString() + ' חלקים · חפשו או בחרו קטגוריה · ≈ מציג חלקים דומים';
+  addInput.value = '';
+  // תצוגת פתיחה: הלבנים והפלטות הנפוצות
+  renderAddGrid(addSearch('brick', 24).concat(addSearch('plate', 24)));
+  addInput.focus();
+}
+function closeAdd(){ addPanel.hidden = true; }
+function runAddSearch(){
+  var raw = addInput.value.trim();
+  if (raw.length < 2){ addMeta.textContent = 'הקלידו לפחות 2 תווים או בחרו קטגוריה'; renderAddGrid(addSearch('brick',24).concat(addSearch('plate',24))); return; }
+  var hits = addSearch(raw, 60);
+  addMeta.textContent = hits.length ? (hits.length + ' תוצאות · ≈ מציג דומים') : 'אין תוצאות';
+  renderAddGrid(hits);
+}
+addInput.addEventListener('input', runAddSearch);
+document.getElementById('btnAddTop').addEventListener('click', openAdd);
+document.getElementById('btnCloseAdd').addEventListener('click', closeAdd);
+addPanel.addEventListener('click', function(e){ if (e.target === addPanel) closeAdd(); });
+
+/* ===== חלון קטן (מלמטה) — רשימת מספרים בלבד ===== */
+var addMini = document.getElementById('addMini');
+var miniInput = document.getElementById('miniInput');
+var miniList = document.getElementById('miniList');
+function miniRow(c){
+  var row = document.createElement('button'); row.className = 'miniRow';
+  var id = document.createElement('span'); id.className = 'mId'; id.textContent = c.id;
+  var dm = document.createElement('span'); dm.className = 'mDim'; dm.textContent = dimLabel(c.id) || '—';
+  var nm = document.createElement('span'); nm.className = 'mNm'; nm.textContent = c.n;
+  row.appendChild(id); row.appendChild(dm); row.appendChild(nm);
+  row.addEventListener('click', function(){
+    if (TYPES[c.id]){ armCatalogPart(c.id, c.n); closeMini(); return; }
+    row.classList.add('loading'); dm.textContent = '…';
+    armCatalogPart(c.id, c.n, function(ok){ if (ok) closeMini(); else { row.classList.remove('loading'); dm.textContent = dimLabel(c.id)||'—'; } });
+  });
+  return row;
+}
+function renderMini(list){
+  miniList.innerHTML = '';
+  if (!list.length){ var e = document.createElement('div'); e.className = 'addEmpty'; e.textContent = 'הקלידו שם/מידה/מספר'; miniList.appendChild(e); return; }
+  list.forEach(function(c){ miniList.appendChild(miniRow(c)); });
+}
+function openMini(){
+  addMini.hidden = false;
+  miniInput.value = '';
+  renderMini(addSearch('plate', 30));
+  miniInput.focus();
+}
+function closeMini(){ addMini.hidden = true; }
+miniInput.addEventListener('input', function(){
+  var raw = miniInput.value.trim();
+  renderMini(raw.length < 2 ? addSearch('plate', 30) : addSearch(raw, 50));
+});
+document.getElementById('btnAddBot').addEventListener('click', openMini);
+document.getElementById('btnCloseMini').addEventListener('click', closeMini);
+
 /* ---------- תצוגת נקודות חיבור (מנתוני ה-shadow האמיתיים) ---------- */
 var snapViz = false;
 var snapGroup = new THREE.Group();
@@ -1849,19 +2064,20 @@ document.getElementById('btnPlay').addEventListener('click', function(){
     parts.forEach(function(p){ placeMesh(p); });
   }
 });
-/* ---------- שלט הזזה עדינה ---------- */
-var FINE = 0.1;   // צעד עדין ≈ 0.1 בליטה
-var moveOn = false;
+/* ---------- שלט ניווט (נפתח אוטומטית בבחירת חלק) ---------- */
+var padFine = false;                 // ✥ מדליק צעד עדין
+function padStep(){ return padFine ? 0.1 : 1.0; }       // צעד אופקי: בליטה שלמה / עדין
+function padVStep(){ return padFine ? LU : 2 * LU; }    // צעד אנכי: פלטה שלמה / חצי-פלטה
+/* השלט מופיע תמיד כשחלק נבחר — "כל פעם שלוחצים על קובייה" */
 function updateMovePad(){
-  document.getElementById('movePad').hidden = !(moveOn && selIds.length);
+  document.getElementById('movePad').hidden = !selIds.length;
 }
 document.getElementById('btnMove').addEventListener('click', function(){
-  moveOn = !moveOn;
-  this.classList.toggle('active', moveOn);
-  updateMovePad();
-  toast(moveOn
-    ? '✥ שלט הזזה: מזיז את החלק הנבחר בצעדים קטנים על מישור הלוח (הרמה/הורדה — בלחיצה ארוכה על החלק)'
-    : 'שלט הזזה כבוי');
+  padFine = !padFine;
+  this.classList.toggle('active', padFine);
+  toast(padFine
+    ? '✥ צעד עדין דלוק — הזזה זעירה לכיוונון מדויק'
+    : 'צעד רגיל — כל לחיצה מזיזה בליטה שלמה (למעלה/למטה = פלטה)');
 });
 /* כיוון מצלמה נצמד לציר הלוח הקרוב ביותר (X או Z) — כדי שהתנועה תהיה ישרה ולא באלכסון */
 function snapXZ(v){
@@ -1878,15 +2094,18 @@ function moveSelBy(v){
   ps.forEach(function(p){
     if (!p.free){ remOcc(p); p.free = true; p.pos = gridPos(p).toArray(); }
     p.pos[0] += v.x; p.pos[1] += v.y; p.pos[2] += v.z;
+    if (p.pos[1] < 0) p.pos[1] = 0;   // לא יורדים מתחת ללוח
     placeMesh(p);
   });
 }
 function dirVec(dir){
-  var d = camDirs();
-  if (dir === 'fwd') return d.f.clone().multiplyScalar(FINE);
-  if (dir === 'back') return d.f.clone().multiplyScalar(-FINE);
-  if (dir === 'right') return d.rt.clone().multiplyScalar(FINE);
-  if (dir === 'left') return d.rt.clone().multiplyScalar(-FINE);
+  if (dir === 'up')   return new THREE.Vector3(0,  padVStep(), 0);
+  if (dir === 'down') return new THREE.Vector3(0, -padVStep(), 0);
+  var d = camDirs(), s = padStep();
+  if (dir === 'fwd')   return d.f.clone().multiplyScalar(s);
+  if (dir === 'back')  return d.f.clone().multiplyScalar(-s);
+  if (dir === 'right') return d.rt.clone().multiplyScalar(s);
+  if (dir === 'left')  return d.rt.clone().multiplyScalar(-s);
   return new THREE.Vector3();
 }
 Array.prototype.forEach.call(document.querySelectorAll('.mvb'), function(btn){
@@ -2430,7 +2649,9 @@ window.BrickAPI = {
   aiPrompt: function(extra){ return aiPromptText(extra); },
   jsonSchema: function(){ return BUILD_JSON_SCHEMA; },
   clear: function(){ pushUndo(snapshot()); setModel([]); save(); },
-  parts: function(){ return parts.map(function(p){ return { type:p.t, name:(TYPES[p.t]||{}).n, x:p.x, z:p.z, l:p.l, color:p.c, free:!!p.free }; }); },
+  parts: function(){ return parts.map(function(p){ return { id:p.id, type:p.t, name:(TYPES[p.t]||{}).n, x:p.x, z:p.z, l:p.l, color:p.c, free:!!p.free }; }); },
+  select: function(id){ selectPart(id != null ? partById(id) : null); },
+  similar: function(id, n){ return similarParts(id, n).map(function(c){ return { id:c.id, name:c.n, dim:dimLabel(c.id) }; }); },
   snapshot: function(){ return snapshot(); },
   palette: function(){ return TYPE_ORDER.filter(function(t){ return TYPES[t]; }).map(function(t){ var p = PD.parts[t]; return { id:t, name:p.n, cat:p.cat, w:p.w, d:p.d, h:p.h, mag:!!p.mag, teeth:p.teeth||0 }; }); },
   catalog: function(q, limit){
