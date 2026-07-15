@@ -2176,6 +2176,11 @@ function resolveType(name){
   var s = String(name).trim();
   if (!s) return null;
   if (TYPES[s] || PD.parts[s]) return s;                 // מזהה מדויק (טעון או ברירת-מחדל)
+  // 0) מזהה קטלוג מדויק שעדיין לא טעון — נחזיר אותו כך שיירד אוטומטית
+  var idk = normKey(s);
+  if (idk){
+    for (var ck=0; ck<catalog.length; ck++){ if (normKey(catalog[ck].id) === idk) return catalog[ck].id; }
+  }
   // 1) התאמה ישירה של השם (עברית/אנגלית) לחלק שכבר טעון — מעדיפים לא להוריד מהרשת
   var raw = normKey(s);
   if (raw){
@@ -2230,11 +2235,39 @@ var BUILD_SCHEMA_DOC = {
   },
   notes: '"type" may be an LDraw part id, or a part name in Hebrew or English (e.g. "לבנה 2×4", "wheel", "door"). Colors are hex strings.'
 };
+/* דוגמית מייצגת מכל הקטלוג (10K+ חלקים) — כדי שהמודל יכיר חלקים עשירים, לא רק בסיסיים */
+var CAT_FAMILIES = [
+  ['רכב',            /^(car base|vehicle base|car mudguard|windscreen|windshield)\b/i, 8],
+  ['משופעות מעוגלות', /^(brick curved|slope brick curved|slope curved|curved slope)\b/i, 6],
+  ['משופעות',        /^slope brick \d/i, 6],
+  ['קשתות',          /^(arch|brick arch)\b/i, 5],
+  ['עגולים/חרוטים',   /^(cone|cylinder|dish|round brick|brick round)\b/i, 6],
+  ['פאנלים/גדרות',    /^(panel|fence|wall element)\b/i, 5],
+  ['צירים/סרנים',     /^(hinge|technic axle|technic pin|technic connector)\b/i, 6],
+  ['טבע/דמויות',      /^(animal|plant)\b/i, 4]
+];
+var CAT_NOISE = /pattern|sticker|minifig|duplo|star ?wars|\bset \d| p\d\b| ps\d\b|assembly/i;
+function catalogSampler(){
+  if (typeof catalog === 'undefined' || !catalog.length) return '';
+  var seen = {}, out = [];
+  CAT_FAMILIES.forEach(function(fam){
+    var he = fam[0], rx = fam[1], cap = fam[2], hits = [];
+    for (var i = 0; i < catalog.length && hits.length < cap; i++){
+      var e = catalog[i];
+      if (seen[e.id] || e.n.length > 42 || CAT_NOISE.test(e.n) || /[a-z]\d*p\d/i.test(e.id)) continue;
+      if (rx.test(e.n.trim())){ seen[e.id] = 1; hits.push('  ' + e.id + '\t' + e.n.trim()); }
+    }
+    if (hits.length) out.push('· ' + he + ':', hits.join('\n'));
+  });
+  return out.join('\n');
+}
 /* בונה את הפקודה המלאה שנותנים ל-Claude יחד עם התמונה (סכימה + פלטה + הנחיות) */
 function aiPromptText(extra){
   var pal = window.BrickAPI.palette().map(function(p){
     return '  ' + p.id + '\t' + p.name + (p.teeth ? ' (' + p.teeth + ' שיניים)' : '') + (p.mag ? ' [מגנטי]' : '');
   }).join('\n');
+  var rich = catalogSampler();
+  var catTotal = (typeof catalog !== 'undefined' && catalog.length) || 0;
   var lines = [
     'אתה מנוע בנייה לאפליקציית קוביות תואמות-לגו. מצורפת תמונה של דגם (או ערימת חלקים). שחזר דגם דומה ובנוי-היטב, והחזר JSON בלבד — בלי טקסט מסביב.',
     '',
@@ -2243,15 +2276,18 @@ function aiPromptText(extra){
     'פורמט הפלט (build-program):',
     '{"name":"<שם קצר>","parts":[{"type":"<מזהה או שם חלק>","x":0,"z":0,"l":0,"color":"#rrggbb"}, ...]}',
     '',
-    '"type" = מספר חלק LDraw, או שם חלק בעברית/אנגלית ("לבנה 2×4", "wheel", "door"). מותר גם שמות אחרים מהקטלוג — הם יורדו אוטומטית.',
+    '"type" = מספר חלק LDraw, או שם חלק בעברית/אנגלית ("לבנה 2×4", "wheel", "door").',
     '',
-    'חלקי ברירת-מחדל זמינים (מזהה⇥שם):',
+    'חלקי ברירת-מחדל (מהירים, מומלצים לגוף הדגם) — מזהה⇥שם:',
     pal,
+    '',
+    'קטלוג מלא: ' + catTotal.toLocaleString() + ' חלקי LDraw נוספים זמינים. אתה יכול לנקוב בכל מזהה LDraw חוקי (למשל 12622 = בסיס-רכב עם כנפיים, 13252 = שמשה, 3040b = רעף) והחלק יורד אוטומטית. השתמש בהם לחלקים ייחודיים/מפורטים שמשדרגים את הדגם. דוגמית מייצגת:',
+    rich,
     '',
     'הנחיות:',
     '- זהה צורה, צבעים, גדלים ומיקום מהתמונה; שחזר דגם מזוהה וניתן לבנייה.',
     '- הנח חלקים בשכבות הגיוניות כך שיישבו זה על זה (הימנע מריחוף).',
-    '- העדף חלקי ברירת-מחדל; פנה לקטלוג רק כשצריך חלק ייחודי.',
+    '- בנה את הגוף מחלקי ברירת-המחדל, ושבץ חלקי-קטלוג מפורטים (שמשות, כנפיים, משופעות מעוגלות, קשתות) היכן שהם משפרים ריאליזם.',
     '- החזר JSON תקין בלבד.'
   ];
   if (extra) lines.push('', 'הנחיה נוספת מהמשתמש: ' + extra);
