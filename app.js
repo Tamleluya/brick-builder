@@ -368,9 +368,10 @@ function save(){
   if (spinOn) buildSpin();
 }
 /* טעינת רשימת חלקים לסצנה, כולל הורדה מהרשת של חלקי קטלוג חסרים */
-var _onModelReady = null;
+var _onModelReady = null, _modelGen = 0;
 function flushModelReady(){ var cb = _onModelReady; _onModelReady = null; if (cb) try { cb(); } catch(e){} }
 function setModel(list){
+  var gen = ++_modelGen;   // דור נוכחי — הורדות אסינכרוניות של דגם ישן ייזנחו
   selectPart(null);
   nextId = list.reduce(function(m,p){ return Math.max(m, p.id); }, 0) + 1;
   parts = list.filter(function(p){ return TYPES[p.t]; });
@@ -383,6 +384,7 @@ function setModel(list){
     Promise.all(Object.keys(ids).map(function(id){
       return buildRemotePart(id, catalogName(id)).catch(function(){ return null; });
     })).then(function(){
+      if (gen !== _modelGen) return;   // דגם הוחלף בינתיים — לא מוסיפים חלקים ישנים
       missing.forEach(function(p){ if (TYPES[p.t]) addPart(p); });
       syncTop(); refreshSnapViz();
       flushModelReady();   // אחרי שכל חלקי-הקטלוג ירדו
