@@ -314,9 +314,11 @@ function afterSel(){
   applySelVisual();
   syncPalette();
   var has = selIds.length > 0, multi = selIds.length > 1;
-  document.getElementById('actions').classList.toggle('on', has);
+  // חלק בודד → תפריט צמוד-לחלק (ברור); בחירה מרובה → סרגל הפעולות התחתון
+  document.getElementById('actions').classList.toggle('on', multi);
   document.body.classList.toggle('hasSel', has);
   document.body.classList.toggle('multiSel', multi);
+  if (selIds.length === 1) showPartMenu(); else hidePartMenu();
   var sc = document.getElementById('selCount');
   if (sc){ sc.textContent = multi ? selIds.length + ' חלקים נבחרו' : ''; sc.style.display = multi ? '' : 'none'; }
   var mb = document.getElementById('btnMulti');
@@ -496,6 +498,8 @@ canvas.addEventListener('pointerdown', function(e){
   var hit = castAt(e.clientX, e.clientY);
   hitPart = hit && hit.part ? hit.part : null;
   mode = 'maybe';
+  // תצוגה מקדימה (רוח-רפאים) כבר בנגיעה — כדי שבסמארטפון רואים איפה החלק יונח לפני שמרימים
+  if (!hitPart && armed && TYPES[armed]) updateGhostAt(downX, downY);
   // לחיצה ארוכה על חלק = בחירה, גם כשמצב הנחה פעיל
   lpDone = false;
   clearTimeout(lpTimer);
@@ -548,8 +552,18 @@ function endBox(x, y){
 document.getElementById('btnCam').addEventListener('click', function(){
   camLock = !camLock;
   this.classList.toggle('active', camLock);
-  toast(camLock ? 'המצלמה ננעלה 🔒 — גרירת רקע לא תזיז את המבט' : 'המצלמה שוחררה — גרירת רקע מסובבת את המבט');
+  this.classList.remove('pulseLock');
+  this.textContent = camLock ? '🔒' : '🧭';
+  this.title = camLock ? 'הרקע נעול — לחצו לשחרור סיבוב המבט' : 'נעילת סיבוב המבט';
+  toast(camLock ? 'הרקע ננעל 🔒 — גרירת רקע לא תזיז את המבט (לחצו שוב לשחרור)' : 'הרקע שוחרר 🧭 — גרירת רקע מסובבת את המבט');
 });
+/* מבליט את כפתור נעילת-המבט כשמנסים להזיז מבט בזמן נעילה */
+function pulseCam(){
+  var b = document.getElementById('btnCam');
+  b.classList.add('pulseLock');
+  toast('🔒 הרקע נעול — הקישו על הכפתור המהבהב למעלה כדי לשחרר את סיבוב המבט');
+  clearTimeout(b._pt); b._pt = setTimeout(function(){ b.classList.remove('pulseLock'); }, 1800);
+}
 
 canvas.addEventListener('pointermove', function(e){
   if (!ptrs.has(e.pointerId)) return;
@@ -596,13 +610,11 @@ canvas.addEventListener('pointermove', function(e){
         startBox(downX, downY);
       } else if (!camLock){
         mode = 'orbit';
+        if (ghostMesh) ghostMesh.visible = false;
       } else {
-        // מצלמה נעולה — לעבודה עדינה בלי הזזות מבט בטעות
+        // מצלמה נעולה — מהבהבים את כפתור הנעילה כדי שברור שצריך ללחוץ עליו כדי לשחרר
         mode = 'idle';
-        if (!lockHinted){
-          lockHinted = true;
-          toast('המצלמה נעולה 🔒 — שחררו בכפתור למעלה');
-        }
+        pulseCam();
       }
     } else return;
   }
@@ -681,6 +693,7 @@ function pointerEnd(e){
         if (snapped || np.l <= MAXH){
           pushUndo(snapshot());
           addPart(np); save(); vibrate(9);
+          if (ghostMesh) ghostMesh.visible = false;   // מתעדכן מחדש בריחוף הבא
           if (snapped) toast('🧲 התחבר!');
         }
       }
@@ -723,6 +736,42 @@ canvas.addEventListener('wheel', function(e){
   camR *= 1 + e.deltaY * 0.0012;
   updateCamera();
 }, {passive:false});
+
+/* ---------- רוח-רפאים להנחה: תצוגה שקופה של החלק החמוש שעוקבת אחרי הסמן ---------- */
+var ghostMesh = null, ghostType = null;
+function clearGhost(){ if (ghostMesh){ partsGroup.remove(ghostMesh); ghostMesh = null; ghostType = null; } }
+function ensureGhost(){
+  if (!armed || armed.indexOf('sub:') === 0 || !TYPES[armed]){ clearGhost(); return false; }
+  if (ghostType !== armed){
+    clearGhost();
+    var gmat = new THREE.MeshStandardMaterial({ color:new THREE.Color(defColor(armed) || curColor), transparent:true, opacity:0.4, depthWrite:false, roughness:0.35, emissive:new THREE.Color(0x9fd0ff), emissiveIntensity:0.25 });
+    ghostMesh = new THREE.Mesh(geomFor(armed), gmat);
+    ghostMesh.renderOrder = 3; ghostMesh.visible = false;
+    // מתאר בהיר — כדי שברור שזו תצוגה מקדימה של ההנחה
+    ghostMesh.add(new THREE.LineSegments(edgesFor(armed), new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.85 })));
+    partsGroup.add(ghostMesh);
+    ghostType = armed;
+  }
+  return true;
+}
+function updateGhostAt(cx, cy){
+  if (!ensureGhost()){ return; }
+  var hit = castAt(cx, cy);
+  if (!hit){ ghostMesh.visible = false; return; }
+  var an = anchorFor(armed, null, hit.point.x, hit.point.z);
+  var np = { t:armed, x:an.x, z:an.z, l:0, q:null };
+  np.l = connectLayer(np);
+  ghostMesh.quaternion.copy(quatOf(np));
+  ghostMesh.position.copy(gridPos(np));
+  ghostMesh.visible = true;
+}
+canvas.addEventListener('pointermove', function(e){
+  if (e.pointerType === 'touch') return;   // עכבר: רוח-הרפאים עוקבת בריחוף (במגע — ההנחה בהקשה)
+  if (mode === 'drag' || mode === 'orbit' || mode === 'box' || mode === 'pinch'){ if (ghostMesh) ghostMesh.visible = false; return; }
+  if (!armed || armed.indexOf('sub:') === 0){ clearGhost(); return; }
+  updateGhostAt(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointerleave', function(){ if (ghostMesh) ghostMesh.visible = false; });
 
 /* ---------- כפתורים ---------- */
 var _btnAuto = document.getElementById('btnAuto');
@@ -912,6 +961,47 @@ document.getElementById('btnSaveSub').addEventListener('click', function(){
   inp.value = ''; inp.focus();
 });
 
+/* ---------- תפריט פעולות צמוד-לחלק ---------- */
+var partMenu = document.getElementById('partMenu');
+function positionPartMenu(){
+  if (partMenu.hidden) return;
+  var p = selIds.length === 1 ? partById(selIds[0]) : null;
+  if (!p){ hidePartMenu(); return; }
+  var s = partScreen(p);
+  var mw = partMenu.offsetWidth || 230, mh = partMenu.offsetHeight || 120;
+  var x = s.x - mw/2;
+  var y = s.y - mh - 22;                     // מעל החלק
+  if (y < 66) y = s.y + 30;                  // אין מקום למעלה → מתחת לחלק
+  x = Math.max(8, Math.min(window.innerWidth - mw - 8, x));
+  y = Math.max(60, Math.min(window.innerHeight - mh - 8, y));
+  partMenu.style.left = x + 'px';
+  partMenu.style.top = y + 'px';
+}
+function showPartMenu(){
+  if (selIds.length !== 1) return;
+  var p = partById(selIds[0]);
+  document.getElementById('pmName').textContent = (TYPES[p.t] && TYPES[p.t].n) || 'חלק';
+  partMenu.hidden = false;
+  positionPartMenu();
+}
+function hidePartMenu(){ partMenu.hidden = true; }
+partMenu.addEventListener('click', function(e){
+  var b = e.target.closest('.pmBtn'); if (!b) return;
+  var a = b.dataset.a;
+  if (a === 'move'){
+    document.getElementById('movePad').hidden = false;
+    toast('✥ הזזה — השתמשו בחצים (למעלה משמאל) כדי להזיז לכל כיוון');
+  }
+  else if (a === 'dup')   document.getElementById('btnDup').click();
+  else if (a === 'paint') document.getElementById('btnPaint').click();
+  else if (a === 'rot')   document.getElementById('btnRot').click();
+  else if (a === 'up')    nudgeY(1);
+  else if (a === 'down')  nudgeY(-1);
+  else if (a === 'del')   document.getElementById('btnDel').click();
+  else if (a === 'more'){ document.getElementById('actions').classList.add('on'); toast('פעולות נוספות: הטיה, גלגול, מודול, בחירה מרובה'); }
+  if (a !== 'del') positionPartMenu();
+});
+
 /* ---------- פלטות UI ---------- */
 var colorsEl = document.getElementById('colors');
 COLORS.forEach(function(c){
@@ -939,7 +1029,7 @@ var curCat = 'b';
 function armedLabel(){
   if (!armed) return '';
   if (armed.indexOf('sub:') === 0){ var s = getSubs()[+armed.slice(4)]; return s ? 'מניח מודול: ' + s.name : ''; }
-  return TYPES[armed] ? 'מניח: ' + TYPES[armed].n + ' · לחיצה ארוכה בוחרת חלק' : '';
+  return TYPES[armed] ? '👻 ' + TYPES[armed].n + ' — הזיזו את העכבר על הלוח ולחצו כדי למקם' : '';
 }
 function syncPalette(){
   Array.from(partsEl.children).forEach(function(el){
@@ -958,6 +1048,7 @@ function syncPalette(){
   var lbl = armedLabel();
   if (lbl){ document.getElementById('armedName').textContent = lbl; bar.classList.add('on'); }
   else bar.classList.remove('on');
+  if (!armed || armed.indexOf('sub:') === 0) clearGhost(); else ensureGhost();
 }
 document.getElementById('btnDockMin').addEventListener('click', function(){
   var dock = document.getElementById('dock');
@@ -1532,42 +1623,126 @@ function thumbRenderer(){
   _thumbCam = new THREE.PerspectiveCamera(27, 140/120, 0.1, 100);
   return _thumbR;
 }
-function buildBrickMesh(dim, colHex){
-  var w = Math.max(1, Math.min(dim.w || 2, 10));
-  var d = Math.max(1, Math.min(dim.d || 2, 10));
-  var bh = Math.max(0.34, (dim.h || 1) * 0.32);   // פלטה נמוכה, לבנה גבוהה
-  var mat = new THREE.MeshStandardMaterial({ color:new THREE.Color(colHex), roughness:0.5, metalness:0.02 });
-  var g = new THREE.Group();
-  var body = new THREE.Mesh(new THREE.BoxGeometry(w, bh, d), mat);
-  body.position.y = bh/2; g.add(body);
-  var studG = new THREE.CylinderGeometry(0.31, 0.31, 0.2, 20);
+function _mat3(col, opts){
+  var o = { color:new THREE.Color(col), roughness:0.5, metalness:0.03 };
+  if (opts) for (var k in opts) o[k] = opts[k];
+  return new THREE.MeshStandardMaterial(o);
+}
+function _addStuds(g, w, d, topY, mat){
+  var sg = new THREE.CylinderGeometry(0.31, 0.31, 0.2, 18);
   for (var i=0;i<w;i++) for (var j=0;j<d;j++){
-    var s = new THREE.Mesh(studG, mat);
-    s.position.set(-w/2 + 0.5 + i, bh + 0.1, -d/2 + 0.5 + j);
+    var s = new THREE.Mesh(sg, mat);
+    s.position.set(-w/2 + 0.5 + i, topY + 0.1, -d/2 + 0.5 + j);
     g.add(s);
   }
-  g.userData.disp = [body.geometry, studG, mat];
-  return { group:g, w:w, d:d, h:bh };
+}
+/* בונה צורת-חלק אמיתית לפי משפחה — גלגל עגול, שיפוע משופע, חרוט, גלגל-שיניים… */
+function buildPartMesh(id){
+  var fam = partFamily(id);
+  var dim = partDims(id) || { w:2, d:2, h:1 };
+  var w = Math.max(1, Math.min(dim.w || 2, 10));
+  var d = Math.max(1, Math.min(dim.d || 2, 10));
+  var col = FAM_COL[fam] || '#8a94a0';
+  var g = new THREE.Group();
+  var mat = _mat3(col);
+
+  if (fam === 'wheel' || fam === 'tyre' || fam === 'tire'){
+    var R = 1.5, width = 1.05;
+    var tire = new THREE.Mesh(new THREE.CylinderGeometry(R, R, width, 34), _mat3('#15161a', {roughness:0.75}));
+    tire.rotation.x = Math.PI/2; g.add(tire);
+    var hub = new THREE.Mesh(new THREE.CylinderGeometry(R*0.55, R*0.55, width*1.04, 22), _mat3('#c9ccd1', {metalness:0.45, roughness:0.3}));
+    hub.rotation.x = Math.PI/2; g.add(hub);
+    g.position.y = R; return { group:g };
+  }
+  if (fam === 'gear'){
+    var teeth = (PD.parts[id] && PD.parts[id].teeth) || 8, Rg = 1.25;
+    var gm = _mat3('#6c6e72');
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(Rg, Rg, 0.5, Math.max(14, teeth)), gm));
+    var tg = new THREE.BoxGeometry(0.3, 0.5, 0.36);
+    for (var t=0;t<teeth;t++){
+      var th = new THREE.Mesh(tg, gm); var a = t/teeth*Math.PI*2;
+      th.position.set(Math.cos(a)*(Rg+0.12), 0, Math.sin(a)*(Rg+0.12)); th.rotation.y = -a; g.add(th);
+    }
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.55, 12), _mat3('#3a3c40')));
+    g.position.y = 0.25; return { group:g };
+  }
+  if (fam === 'cone'){
+    var Rc = Math.max(0.7, Math.min(w, 3)/2 + 0.25), Hc = Math.max(1.2, (dim.h || 2) * 0.5);
+    var cone = new THREE.Mesh(new THREE.ConeGeometry(Rc, Hc, 26), mat); cone.position.y = Hc/2; g.add(cone);
+    return { group:g };
+  }
+  if (fam === 'dish'){
+    var Rd = Math.max(1, Math.min(w, 5)/2 + 0.5);
+    var dish = new THREE.Mesh(new THREE.ConeGeometry(Rd, 0.55, 30, 1, true), _mat3(col, {side:THREE.DoubleSide}));
+    dish.position.y = 0.5; dish.rotation.x = Math.PI; g.add(dish); return { group:g };
+  }
+  if (fam === 'round'){
+    var Rr = Math.max(0.55, Math.min(w, 4)/2), br = Math.max(0.4, (dim.h || 1) * 0.32);
+    var cyl = new THREE.Mesh(new THREE.CylinderGeometry(Rr, Rr, br, 28), mat); cyl.position.y = br/2; g.add(cyl);
+    var st = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.2, 18), mat); st.position.y = br + 0.1; g.add(st);
+    return { group:g };
+  }
+  if (fam === 'axle' || fam === 'bar' || fam === 'pin' || fam === 'antenna'){
+    var len = Math.max(1.6, Math.min((dim.w || dim.d || 3), 8) * 0.55);
+    var barM = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, len, 16), _mat3(fam==='axle'?'#c19a2e':col));
+    barM.position.y = len/2; g.add(barM); return { group:g };
+  }
+  if (fam === 'slope' || fam === 'wedge'){
+    var Hs = Math.max(0.9, (dim.h || 3) * 0.3 + 0.5);
+    var sh = new THREE.Shape(); sh.moveTo(0,0); sh.lineTo(w,0); sh.lineTo(0,Hs); sh.lineTo(0,0);
+    var geo = new THREE.ExtrudeGeometry(sh, {depth:d, bevelEnabled:false}); geo.translate(-w/2, 0, -d/2);
+    g.add(new THREE.Mesh(geo, mat)); return { group:g };
+  }
+  if (fam === 'tile'){
+    var tt = 0.32; var tb = new THREE.Mesh(new THREE.BoxGeometry(w, tt, d), _mat3(col, {roughness:0.32})); tb.position.y = tt/2; g.add(tb);
+    return { group:g };
+  }
+  if (fam === 'door' || fam === 'window' || fam === 'glass' || fam === 'windscreen'){
+    var pw = Math.max(1, Math.min(w, 6)), ph = Math.max(2.4, Math.min((dim.h || 3) * 0.8 + 1.5, 6));
+    var trans = (fam !== 'door');
+    var pmat = _mat3(col, trans ? {transparent:true, opacity:0.55, roughness:0.12, metalness:0.1} : {roughness:0.45});
+    var panel = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, 0.4), pmat); panel.position.y = ph/2; g.add(panel);
+    return { group:g };
+  }
+  if (fam === 'arch'){
+    var aw = Math.max(2, Math.min(w, 6)), ah = Math.max(1.8, (dim.h || 3) * 0.3 + 1);
+    var leg = new THREE.BoxGeometry(0.7, ah, d);
+    var l1 = new THREE.Mesh(leg, mat); l1.position.set(-aw/2 + 0.35, ah/2, 0); g.add(l1);
+    var l2 = new THREE.Mesh(leg, mat); l2.position.set(aw/2 - 0.35, ah/2, 0); g.add(l2);
+    var top = new THREE.Mesh(new THREE.BoxGeometry(aw, 0.7, d), mat); top.position.set(0, ah + 0.35, 0); g.add(top);
+    return { group:g };
+  }
+  // ברירת מחדל: לבנה/פלטה/לוח/תושבת/קורה/כנף — גוף עם בליטות
+  var bh = Math.max(0.34, (dim.h || 1) * 0.32);
+  var body = new THREE.Mesh(new THREE.BoxGeometry(w, bh, d), mat); body.position.y = bh/2; g.add(body);
+  _addStuds(g, w, d, bh, mat);
+  return { group:g };
 }
 function partThumb(id){
+  var fam = partFamily(id);
   var dim = partDims(id) || { w:2, d:2, h:1 };
-  var col = FAM_COL[partFamily(id)] || '#8a94a0';
-  var key = (dim.w||2) + 'x' + (dim.d||2) + 'x' + (dim.h||1) + col;
+  var col = FAM_COL[fam] || '#8a94a0';
+  var key = fam + '|' + (dim.w||2) + 'x' + (dim.d||2) + 'x' + (dim.h||1) + '|' + col;
   if (thumbCache[key]) return thumbCache[key];
   try {
     thumbRenderer();
-    var bm = buildBrickMesh(dim, col);
+    var bm = buildPartMesh(id);
     _thumbScene.add(bm.group);
-    var size = Math.max(bm.w, bm.d, bm.h * 1.5);
-    var dist = size * 2.0 + 2.2;
+    bm.group.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(bm.group);
+    var ctr = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    var size = Math.max(sz.x, sz.y, sz.z, 1);
+    var dist = size * 1.8 + 1.4;
     var dir = new THREE.Vector3(0.82, 0.72, 1).normalize();
-    _thumbCam.position.copy(dir.multiplyScalar(dist));
-    _thumbCam.position.y += bm.h * 0.4;
-    _thumbCam.lookAt(0, bm.h/2, 0);
+    _thumbCam.position.copy(ctr).add(dir.multiplyScalar(dist));
+    _thumbCam.lookAt(ctr);
     _thumbR.render(_thumbScene, _thumbCam);
     var url = _thumbR.domElement.toDataURL('image/png');
     _thumbScene.remove(bm.group);
-    bm.group.userData.disp.forEach(function(o){ if (o && o.dispose) o.dispose(); });
+    bm.group.traverse(function(o){
+      if (o.geometry) o.geometry.dispose();
+      if (o.material){ (Array.isArray(o.material) ? o.material : [o.material]).forEach(function(m){ if (m.dispose) m.dispose(); }); }
+    });
     thumbCache[key] = url;
     return url;
   } catch(e){ return ''; }
@@ -2421,6 +2596,7 @@ function tick(ts){
   }
   fpsLast = ts;
   renderer.render(scene, camera);
+  if (!partMenu.hidden) positionPartMenu();   // התפריט עוקב אחרי החלק כשמזיזים מבט
 }
 
 /* ---------- אתחול ---------- */

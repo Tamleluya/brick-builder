@@ -57,6 +57,16 @@
   .tbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .tbtn[disabled]{opacity:.35;}
   .tbtn.active{background:var(--accent);color:var(--accent-ink);}
+  .tbtn.pulseLock{
+    background:var(--danger);color:#fff;
+    animation:lockPulse .55s ease-in-out 3;
+    box-shadow:0 0 0 0 rgba(226,87,76,.7);
+  }
+  @keyframes lockPulse{
+    0%{transform:scale(1);box-shadow:0 0 0 0 rgba(226,87,76,.75);}
+    50%{transform:scale(1.18);box-shadow:0 0 0 9px rgba(226,87,76,0);}
+    100%{transform:scale(1);box-shadow:0 0 0 0 rgba(226,87,76,0);}
+  }
 
   .hint{
     position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);
@@ -276,6 +286,23 @@
   .mvb[data-dir="down"]{grid-area:3/1}
   .mvb.up,.mvb.down{color:var(--accent);font-size:16px;font-weight:700;}
 
+  /* תפריט פעולות צמוד-לחלק (נפתח בהקשה/לחיצה-ארוכה על חלק) */
+  .partMenu{position:fixed;z-index:14;padding:8px;max-width:250px;
+    box-shadow:0 10px 34px rgba(0,0,0,.5);animation:pmIn .13s ease-out;}
+  .partMenu[hidden]{display:none;}
+  @keyframes pmIn{from{opacity:0;transform:translateY(6px) scale(.94);}to{opacity:1;transform:none;}}
+  .pmName{font-size:12px;color:var(--accent);font-weight:700;text-align:center;padding:2px 4px 7px;}
+  .pmGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .pmBtn{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:11px;padding:9px 4px 6px;font-size:19px;line-height:1;font-family:inherit;
+    display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;}
+  .pmBtn span{font-size:10.5px;color:var(--muted);}
+  .pmBtn:active{transform:scale(.92);background:var(--accent);}
+  .pmBtn:active span{color:var(--accent-ink);}
+  .pmBtn.danger{background:rgba(226,87,76,.18);}
+  .pmBtn.danger span{color:#ffb1a8;}
+  .pmBtn.more{background:rgba(255,255,255,.04);}
+
   /* לחצן "הוסף חלק" תחתון קבוע */
   .addBot{
     position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 158px);
@@ -373,6 +400,20 @@
 <button class="tbtn addBot" id="btnAddBot" title="הוסף חלק — רשימה מהירה">➕<small>הוסף</small></button>
 
 <div id="boxSel"></div>
+
+<div class="partMenu pill" id="partMenu" hidden>
+  <div class="pmName" id="pmName"></div>
+  <div class="pmGrid">
+    <button class="pmBtn" data-a="move">✥<span>הזז</span></button>
+    <button class="pmBtn" data-a="dup">⧉<span>שכפל</span></button>
+    <button class="pmBtn" data-a="paint">🎨<span>צבע</span></button>
+    <button class="pmBtn" data-a="rot">⟳<span>סובב</span></button>
+    <button class="pmBtn" data-a="up">⬆<span>הגבה</span></button>
+    <button class="pmBtn" data-a="down">⬇<span>הנמך</span></button>
+    <button class="pmBtn more" data-a="more">⋯<span>עוד</span></button>
+    <button class="pmBtn danger" data-a="del">🗑<span>מחק</span></button>
+  </div>
+</div>
 
 <div class="hint pill" id="hint">הקשה מניחה · גרירה מזיזה · בחר חלק ו-✥ פותח שלט הזזה עדינה (חלק על חלק) · 🧩 שומר מודול · ▶ מניע גלגלים</div>
 
