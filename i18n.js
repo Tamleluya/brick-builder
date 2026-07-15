@@ -87,7 +87,14 @@ window.BB_I18N = {
       "{n} חלקים נבחרו":"{n} parts selected",
       "ספריית דגמים":"Models library","דגמים":"Models","הכל":"All","🧱 רגיל":"🧱 Standard","רגיל":"Standard","מיוחד":"Special",
       "שלב":"Step","‹ הקודם":"‹ Prev","הבא ›":"Next ›","🧱 בנה על הלוח":"🧱 Build on board","מפרט חלקים":"Parts list",
-      "נבנה על הלוח — אפשר לערוך":"Built on the board — you can edit","מבנים":"Structures","רכבים":"Vehicles","טבע":"Nature","רהיטים":"Furniture","אותיות":"Letters","תמונות":"Pictures"
+      "נבנה על הלוח — אפשר לערוך":"Built on the board — you can edit","מבנים":"Structures","רכבים":"Vehicles","טבע":"Nature","רהיטים":"Furniture","אותיות":"Letters","תמונות":"Pictures",
+      "בונה מהמלאי":"Build from my parts","הזינו אילו חלקים יש לכם — ואבנה לכם דגם שאפשר להרכיב מהם.":"Enter which parts you own — I'll build you a model you can assemble from them.",
+      "קופסה מוכנה:":"Ready-made box:","קטנה":"Small","בינונית":"Medium","גדולה":"Large","נקה":"Clear",
+      "לבנים":"Bricks","פלטות":"Plates","משופעים":"Slopes","אריחים":"Tiles","עגולים":"Round","דלת":"Door","חלון":"Window",
+      "חלקים במלאי":"parts in stock","🔍 מה אפשר לבנות":"🔍 What can I build","🏠 בנה לי דגם":"🏠 Build me a model",
+      "נוצל":"Used","נשאר":"Left over","נבנה!":"Built!","דגמים מהספרייה שמתאימים למלאי":"Library models that fit your parts",
+      "אפשר לבנות":"Can build","חסר":"Missing","אין עדיין דגם שמתאים — הוסיפו עוד לבנים 1×1":"No matching model yet — add more 1×1 bricks",
+      "מלאי נטען":"Inventory loaded","הוסיפו קודם חלקים למלאי":"Add some parts to your inventory first","לא הצלחתי לבנות מהחלקים האלה — נסו להוסיף לבנים":"Couldn't build from these — try adding bricks"
     },
     es: {
       "בונה הקוביות":"Constructor de Bloques","בנה עם AI":"Crear con IA","שפה / Language":"Idioma","איך בונים? מדריך קצר":"¿Cómo construir? Guía rápida",

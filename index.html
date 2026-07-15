@@ -367,6 +367,40 @@
   .libStepLbl{font-size:12px;color:var(--muted);text-align:center;flex:1;}
   .bomTtl{font-size:12.5px;font-weight:700;color:var(--accent);padding:6px 2px 4px;border-top:1px solid rgba(255,255,255,.08);margin-top:6px;}
   .libBom{display:flex;flex-direction:column;gap:2px;max-height:26vh;overflow-y:auto;}
+
+  /* בונה מהמלאי */
+  .invIntro{font-size:12.5px;color:var(--muted);line-height:1.5;padding:2px 2px 8px;}
+  .invPresets{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding-bottom:8px;}
+  .invPresetLbl{font-size:11.5px;color:var(--muted);}
+  .invPresetBtn{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);border-radius:999px;padding:6px 13px;font-size:12px;font-family:inherit;}
+  .invPresetBtn:active{transform:scale(.96);}
+  .invPresetBtn.ghost{color:var(--muted);}
+  .invGrid{max-height:46vh;overflow-y:auto;padding:2px;display:flex;flex-direction:column;gap:4px;}
+  .invCatHead{font-size:11px;font-weight:700;color:var(--accent);padding:6px 2px 2px;}
+  .invCatRow{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;}
+  .invCard{background:var(--panel-soft);border-radius:11px;padding:6px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:3px;border:1.5px solid transparent;}
+  .invCard.has{border-color:var(--accent);}
+  .invImg{width:100%;height:52px;object-fit:contain;background:rgba(255,255,255,.04);border-radius:8px;}
+  .invN{font-size:11px;color:var(--muted);direction:ltr;font-variant-numeric:tabular-nums;}
+  .invStep{display:flex;align-items:center;gap:4px;}
+  .invBtn{width:26px;height:26px;border:0;border-radius:8px;cursor:pointer;background:var(--panel);color:var(--text);font-size:17px;line-height:1;font-family:inherit;display:flex;align-items:center;justify-content:center;}
+  .invBtn:active{background:var(--accent);color:var(--accent-ink);}
+  .invCnt{min-width:22px;text-align:center;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .invBar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 2px 2px;border-top:1px solid rgba(255,255,255,.08);margin-top:6px;}
+  .invTotal{font-size:12px;color:var(--muted);}
+  .invActs{display:flex;gap:8px;flex-wrap:wrap;}
+  .invResTitle{font-size:13px;font-weight:700;color:var(--accent);padding:8px 2px 2px;}
+  .invResCols{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .invMatchList{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px;max-height:40vh;overflow-y:auto;padding:2px;}
+  .invMatchCard{position:relative;border:1.5px solid transparent;cursor:pointer;background:var(--panel-soft);color:var(--text);border-radius:11px;padding:6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:inherit;}
+  .invMatchCard.ok{border-color:#3fae5a;}
+  .invMatchCard:active{transform:scale(.97);}
+  .invMatchImg{width:100%;height:78px;object-fit:contain;background:rgba(255,255,255,.04);border-radius:8px;}
+  .invMatchN{font-size:11.5px;text-align:center;line-height:1.2;max-height:2.4em;overflow:hidden;}
+  .invMatchS{font-size:10px;color:var(--muted);text-align:center;line-height:1.2;}
+  .invMatchCard.ok .invMatchS{color:#3fae5a;font-weight:700;}
+  .invEmpty{grid-column:1/-1;font-size:12px;color:var(--muted);text-align:center;padding:14px;}
+  @media (max-width:560px){ .invResCols{grid-template-columns:1fr;} }
   .bomRow{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:7px;background:var(--panel-soft);font-size:12.5px;}
   .bomRow .bomC{color:var(--accent);direction:ltr;font-variant-numeric:tabular-nums;}
 
@@ -472,6 +506,7 @@
   <button class="tbtn" id="btnAI" title="בנה עם AI">🤖</button>
   <button class="tbtn" id="btnLang" title="שפה / Language">🌐</button>
   <button class="tbtn" id="btnLib" title="ספריית דגמים">📚</button>
+  <button class="tbtn" id="btnInv" title="בונה מהמלאי — מזינים אילו חלקים יש לכם">🎒</button>
   <button class="tbtn" id="btnHelp" title="איך בונים? מדריך קצר">❓</button>
   <button class="tbtn wide" id="btnAddTop" title="הוסף חלק — חלון גדול עם תמונות">➕ חלק</button>
   <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
@@ -731,6 +766,42 @@
       <button class="abtn wide" id="btnLibBuild">🧱 בנה על הלוח</button>
       <div class="bomTtl">מפרט חלקים</div>
       <div class="libBom" id="libBom"></div>
+    </div>
+  </div>
+</div>
+
+<div class="search" id="invPanel" hidden>
+  <div class="searchBox pill" style="width:min(700px,100%);">
+    <div class="searchHead">
+      <b class="galTitle">🎒 <span>בונה מהמלאי</span></b>
+      <button class="tbtn" id="btnCloseInv">✕</button>
+    </div>
+    <div class="invIntro">הזינו אילו חלקים יש לכם — ואבנה לכם דגם שאפשר להרכיב מהם.</div>
+    <div class="invPresets">
+      <span class="invPresetLbl">קופסה מוכנה:</span>
+      <button class="invPresetBtn" data-preset="קופסה קטנה">קטנה</button>
+      <button class="invPresetBtn" data-preset="קופסה בינונית">בינונית</button>
+      <button class="invPresetBtn" data-preset="קופסה גדולה">גדולה</button>
+      <button class="invPresetBtn ghost" id="btnInvClear">נקה</button>
+    </div>
+    <div class="invGrid" id="invGrid"></div>
+    <div class="invBar">
+      <span class="invTotal" id="invTotal"></span>
+      <div class="invActs">
+        <button class="abtn" id="btnInvMatch">🔍 מה אפשר לבנות</button>
+        <button class="abtn wide" id="btnInvBuild">🏠 בנה לי דגם</button>
+      </div>
+    </div>
+    <div id="invResult" hidden>
+      <div class="invResTitle" id="invResTitle"></div>
+      <div class="invResCols">
+        <div class="invResCol"><div class="bomTtl">נוצל</div><div class="libBom" id="invUsed"></div></div>
+        <div class="invResCol"><div class="bomTtl">נשאר</div><div class="libBom" id="invLeft"></div></div>
+      </div>
+    </div>
+    <div id="invMatchWrap" hidden>
+      <div class="bomTtl">דגמים מהספרייה שמתאימים למלאי</div>
+      <div class="invMatchList" id="invMatchList"></div>
     </div>
   </div>
 </div>

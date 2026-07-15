@@ -3573,6 +3573,266 @@ document.getElementById('btnLibBuild').addEventListener('click', function(){
 });
 window.__models = function(){ return MODELS.map(function(m){ return { name:m.name, tier:m.tier, cat:m.cat, parts:modelProg(m).parts.length }; }); };
 
+/* ==================== בונה מהמלאי — "מה יש לי → מה אבנה" ==================== */
+/* טבלת החלקים שהמשתמש מזין למלאי (מידות בבליטות; lh = גובה בחצאי־פלטות) */
+var INV_PARTS = [
+  { t:'3005', w:1,d:1, lh:6, cat:'brick' }, { t:'3004', w:1,d:2, lh:6, cat:'brick' },
+  { t:'3010', w:1,d:4, lh:6, cat:'brick' }, { t:'3009', w:1,d:6, lh:6, cat:'brick' },
+  { t:'3008', w:1,d:8, lh:6, cat:'brick' }, { t:'3003', w:2,d:2, lh:6, cat:'brick' },
+  { t:'3002', w:2,d:3, lh:6, cat:'brick' }, { t:'3001', w:2,d:4, lh:6, cat:'brick' },
+  { t:'2456', w:2,d:6, lh:6, cat:'brick' },
+  { t:'3023', w:1,d:2, lh:2, cat:'plate' }, { t:'3710', w:1,d:4, lh:2, cat:'plate' },
+  { t:'3022', w:2,d:2, lh:2, cat:'plate' }, { t:'3020', w:2,d:4, lh:2, cat:'plate' },
+  { t:'3031', w:4,d:4, lh:2, cat:'plate' }, { t:'3958', w:6,d:6, lh:2, cat:'plate' },
+  { t:'3039', w:2,d:2, lh:6, cat:'slope' }, { t:'3040', w:1,d:2, lh:6, cat:'slope' },
+  { t:'3068b',w:2,d:2, lh:2, cat:'tile'  }, { t:'3069b',w:1,d:2, lh:2, cat:'tile'  },
+  { t:'3941', w:2,d:2, lh:6, cat:'round' }, { t:'3062b',w:1,d:1, lh:6, cat:'round' },
+  { t:'60623',w:1,d:4, lh:12,cat:'door'  }, { t:'60594',w:1,d:4, lh:12,cat:'window' }
+];
+var INV_BY_T = {}; INV_PARTS.forEach(function(P){ INV_BY_T[P.t] = P; });
+var INV_CAT_ORDER = ['brick','plate','slope','tile','round','door','window'];
+var INV_CAT_LBL = { brick:'לבנים', plate:'פלטות', slope:'משופעים', tile:'אריחים', round:'עגולים', door:'דלת', window:'חלון' };
+
+var INV_PRESETS = {
+  'קופסה קטנה':  { '3005':14,'3004':10,'3010':6,'3003':8,'3001':6,'3020':6,'3022':8,'3068b':6,'3039':4,'3040':2,'3941':2,'60623':1,'60594':1 },
+  'קופסה בינונית':{ '3005':30,'3004':20,'3010':12,'3009':6,'3003':14,'3001':12,'2456':6,'3020':12,'3022':14,'3031':4,'3068b':12,'3069b':8,'3039':8,'3040':6,'3941':4,'3062b':6,'60623':1,'60594':2 },
+  'קופסה גדולה': { '3005':70,'3004':44,'3010':28,'3009':16,'3008':10,'3003':30,'3002':16,'3001':26,'2456':14,'3020':26,'3022':30,'3031':10,'3958':4,'3068b':26,'3069b':16,'3039':18,'3040':12,'3941':10,'3062b':14,'60623':2,'60594':4 }
+};
+
+/* מלאי המשתמש: { typeId: count } */
+var inv = (function(){ try { return JSON.parse(localStorage.getItem('bb-inv') || '{}') || {}; } catch(e){ return {}; } })();
+function saveInv(){ try { localStorage.setItem('bb-inv', JSON.stringify(inv)); } catch(e){} }
+function invTotal(){ var n=0; Object.keys(inv).forEach(function(k){ n += inv[k]||0; }); return n; }
+
+var QY = [0, Math.SQRT1_2, 0, Math.SQRT1_2];   // סיבוב 90° סביב ציר Y
+
+/* לוקח מהמאגר את החלק הארוך ביותר שאורכו ≤ maxLen ומקטין את המלאי */
+function invTake(pool, maxLen){
+  var best=null, bl=0;
+  for (var i=0;i<pool.length;i++){ var p=pool[i]; if (p.n<=0) continue; var L=Math.max(p.w,p.d); if (L<=maxLen && L>bl){ best=p; bl=L; } }
+  if (best) best.n--;
+  return best;
+}
+/* ממלא קו ישר (קיר 1 עבה) מהמאגר */
+function invFillLine(parts, x0, z0, axis, len, y, pool, color){
+  var pos=0, guard=0;
+  while (pos<len && guard++<400){
+    var pc = invTake(pool, len-pos); if (!pc) break;
+    var lng = Math.max(pc.w,pc.d), rot;
+    if (axis==='x'){ rot=(pc.d>pc.w); parts.push({ type:pc.t, x:x0+pos, z:z0, l:y, color:color, q:rot?QY:null }); }
+    else          { rot=(pc.w>pc.d); parts.push({ type:pc.t, x:x0, z:z0+pos, l:y, color:color, q:rot?QY:null }); }
+    pos += lng;
+  }
+  return pos;
+}
+/* אורז מלבן W×D בשכבה אחת (מרצפת/גג) — greedy דו־ממדי, ללא חפיפות */
+function invTileArea(parts, ox, oz, W, D, y, pool, color){
+  var occ={}, filled=0;
+  var sorted = pool.slice().filter(function(p){ return p.n>0; }).sort(function(a,b){ return b.w*b.d - a.w*a.d; });
+  for (var j=0;j<D;j++) for (var i=0;i<W;i++){
+    if (occ[i+','+j]) continue;
+    for (var s=0;s<sorted.length;s++){
+      var p=sorted[s]; if (p.n<=0) continue;
+      var oris = (p.w===p.d) ? [[p.w,p.d,null]] : [[p.w,p.d,null],[p.d,p.w,QY]];
+      var done=false;
+      for (var o=0;o<oris.length && !done;o++){
+        var pw=oris[o][0], pd=oris[o][1];
+        if (i+pw>W || j+pd>D) continue;
+        var free=true;
+        for (var a=0;a<pw&&free;a++) for (var b=0;b<pd&&free;b++) if (occ[(i+a)+','+(j+b)]) free=false;
+        if (!free) continue;
+        for (var a2=0;a2<pw;a2++) for (var b2=0;b2<pd;b2++) occ[(i+a2)+','+(j+b2)]=1;
+        parts.push({ type:p.t, x:ox+i, z:oz+j, l:y, color:color, q:oris[o][2] });
+        p.n--; filled += pw*pd; done=true;
+      }
+      if (done) break;
+    }
+  }
+  return filled;
+}
+
+/* בונה בית/מבנה מהמלאי הנתון; מחזיר {parts, used, leftover, W, D, empty} */
+function autoBuildFromInventory(source){
+  var orig={}, pools={ brick:[], plate:[], slope:[], tile:[], round:[], door:0, window:0 };
+  INV_PARTS.forEach(function(P){
+    var n = (source[P.t]||0); orig[P.t]=n; if (n<=0) return;
+    if (P.cat==='door'){ pools.door+=n; return; }
+    if (P.cat==='window'){ pools.window+=n; return; }
+    pools[P.cat].push({ t:P.t, w:P.w, d:P.d, lh:P.lh, n:n });
+  });
+  var wallPool = pools.brick.filter(function(p){ return Math.min(p.w,p.d)===1; });      // קירות: לבנים צרות (עובי 1)
+  var slabPool = pools.brick.filter(function(p){ return Math.min(p.w,p.d)>1; });          // רצפה/גג: לבנים רחבות
+  var parts=[];
+  var area=0; pools.brick.concat(pools.plate).forEach(function(p){ area += p.w*p.d*p.n; });
+  if (area<1 && !pools.slope.length && !pools.tile.length && !pools.round.length)
+    return { parts:[], used:{}, leftover:orig, W:0, D:0, empty:true };
+
+  var side = Math.max(4, Math.min(BOARD-2, Math.round(Math.sqrt(area*0.55)) || 4));
+  var W=side, D=side, ox=Math.floor((BOARD-W)/2), oz=Math.floor((BOARD-D)/2);
+  var wallCol = MC.sand;
+
+  // רצפה — פלטות אם יש (גובה אחיד), אחרת לבנים רחבות
+  var floorH=0;
+  if (pools.plate.length){ invTileArea(parts, ox,oz,W,D, 0, pools.plate, MC.gray); floorH=2; }
+  else if (slabPool.length){ invTileArea(parts, ox,oz,W,D, 0, slabPool, MC.gray); floorH=6; }
+  var y0 = floorH;
+
+  // קירות — נדבכים סביב ההיקף, פתח דלת/חלון
+  var course=0;
+  while (wallPool.some(function(p){ return p.n>0; }) && course<80){
+    var yy = y0 + course*6;
+    var before = wallPool.reduce(function(s,p){ return s+p.n; }, 0);
+    var dc = ox + Math.floor(W/2);
+    if (pools.door>0 && course<2){                                   // פתח דלת בקיר הקדמי
+      invFillLine(parts, ox, oz, 'x', dc-ox, yy, wallPool, wallCol);
+      invFillLine(parts, dc+1, oz, 'x', ox+W-(dc+1), yy, wallPool, wallCol);
+    } else {
+      invFillLine(parts, ox, oz, 'x', W, yy, wallPool, wallCol);
+    }
+    invFillLine(parts, ox, oz+D-1, 'x', W, yy, wallPool, wallCol);   // אחורי
+    var wc = oz + Math.floor(D/2);
+    if (pools.window>0 && course===1){                              // פתח חלון בקיר שמאל
+      invFillLine(parts, ox, oz+1, 'z', wc-(oz+1), yy, wallPool, wallCol);
+      invFillLine(parts, ox, wc+1, 'z', (oz+D-1)-(wc+1), yy, wallPool, wallCol);
+    } else {
+      invFillLine(parts, ox, oz+1, 'z', D-2, yy, wallPool, wallCol);
+    }
+    invFillLine(parts, ox+W-1, oz+1, 'z', D-2, yy, wallPool, wallCol); // ימין
+    if (wallPool.reduce(function(s,p){ return s+p.n; }, 0) === before) break;
+    course++;
+  }
+  var wallTopY = y0 + course*6;
+
+  // דלת + חלון
+  if (pools.door>0 && course>0){ parts.push({ type:'60623', x:ox+Math.floor(W/2), z:oz, l:y0, color:MC.brown }); pools.door--; }
+  if (pools.window>0 && course>0){ parts.push({ type:'60594', x:ox, z:oz+Math.floor(D/2), l:y0+6, color:'#bfe0ff' }); pools.window--; }
+
+  // גג שטוח — אריחים + פלטות/לבנים שנותרו
+  var roofPool = pools.tile.concat(slabPool.filter(function(p){ return p.n>0; }), pools.plate.filter(function(p){ return p.n>0; }));
+  var roofY = wallTopY;
+  if (roofPool.some(function(p){ return p.n>0; })){ invTileArea(parts, ox,oz,W,D, roofY, roofPool, MC.white); }
+  // רכס משופעים במרכז הגג
+  if (pools.slope.some(function(p){ return p.n>0; })){
+    invFillLine(parts, ox, oz+Math.floor(D/2), 'x', W, roofY+2, pools.slope, MC.red);
+  }
+  // צריחונים בפינות מלבנים עגולים
+  if (pools.round.some(function(p){ return p.n>0; })){
+    var corners=[[ox,oz],[ox+W-1,oz],[ox,oz+D-1],[ox+W-1,oz+D-1]], rounds=pools.round, ry=roofY+4, stop=false;
+    for (var lv=0; lv<12 && !stop; lv++) for (var ci=0; ci<4; ci++){
+      var pc=invTake(rounds,2); if (!pc){ stop=true; break; }
+      parts.push({ type:pc.t, x:corners[ci][0], z:corners[ci][1], l:ry+lv*6, color:MC.blue });
+    }
+  }
+
+  var leftover={};
+  pools.brick.concat(pools.plate, pools.slope, pools.tile, pools.round).forEach(function(p){ leftover[p.t]=p.n; });
+  leftover['60623']=pools.door; leftover['60594']=pools.window;
+  var used={};
+  Object.keys(orig).forEach(function(t){ if (orig[t]) used[t]=(orig[t]||0)-(leftover[t]||0); });
+  return { parts:parts, used:used, leftover:leftover, W:W, D:D, empty:parts.length===0 };
+}
+
+/* דגמים מהספרייה שאפשר לבנות מהמלאי הנוכחי */
+function invMatches(source, limit){
+  var out=[];
+  for (var i=0;i<MODELS.length;i++){
+    var m=MODELS[i], bom=modelBOM(modelProg(m)), ok=true, have=0, needTotal=0, missing=[];
+    for (var b=0;b<bom.length;b++){
+      var need=bom[b].count, has=source[bom[b].id]||0; needTotal+=need; have+=Math.min(need,has);
+      if (has<need){ ok=false; missing.push({ id:bom[b].id, name:bom[b].name, short:need-has }); }
+    }
+    out.push({ m:m, ok:ok, cover: needTotal? have/needTotal : 0, missing:missing, parts:modelProg(m).parts.length });
+  }
+  out.sort(function(a,b){ return (b.ok-a.ok) || (b.cover-a.cover) || (b.parts-a.parts); });
+  return out.slice(0, limit||30);
+}
+
+/* ---------- ממשק בונה־המלאי ---------- */
+var invPanel = document.getElementById('invPanel');
+function invName(t){ return (PD.parts[t] && PD.parts[t].n) || dimLabel(t) || t; }
+function renderInvGrid(){
+  var grid = document.getElementById('invGrid'); if (!grid) return;
+  grid.innerHTML = '';
+  INV_CAT_ORDER.forEach(function(cat){
+    var group = INV_PARTS.filter(function(P){ return P.cat===cat; }); if (!group.length) return;
+    var h = document.createElement('div'); h.className='invCatHead'; h.textContent = t(INV_CAT_LBL[cat]); grid.appendChild(h);
+    var row = document.createElement('div'); row.className='invCatRow';
+    group.forEach(function(P){
+      var card = document.createElement('div'); card.className='invCard';
+      var im = document.createElement('img'); im.className='invImg'; im.alt=''; im.src = partThumb(P.t);
+      var nm = document.createElement('span'); nm.className='invN'; nm.textContent = dimLabel(P.t) || invName(P.t);
+      var st = document.createElement('div'); st.className='invStep';
+      var minus = document.createElement('button'); minus.className='invBtn'; minus.textContent='−';
+      var cnt = document.createElement('span'); cnt.className='invCnt'; cnt.textContent = inv[P.t]||0;
+      var plus = document.createElement('button'); plus.className='invBtn'; plus.textContent='+';
+      minus.addEventListener('click', function(){ inv[P.t]=Math.max(0,(inv[P.t]||0)-1); cnt.textContent=inv[P.t]; if(!inv[P.t])delete inv[P.t]; card.classList.toggle('has',!!inv[P.t]); saveInv(); syncInvTotal(); });
+      plus.addEventListener('click', function(){ inv[P.t]=(inv[P.t]||0)+1; cnt.textContent=inv[P.t]; card.classList.add('has'); saveInv(); syncInvTotal(); });
+      st.appendChild(minus); st.appendChild(cnt); st.appendChild(plus);
+      if (inv[P.t]) card.classList.add('has');
+      card.appendChild(im); card.appendChild(nm); card.appendChild(st); row.appendChild(card);
+    });
+    grid.appendChild(row);
+  });
+  syncInvTotal();
+}
+function syncInvTotal(){ var e=document.getElementById('invTotal'); if(e) e.textContent = invTotal() + ' ' + t('חלקים במלאי'); }
+function openInv(){ if(!invPanel) return; invPanel.hidden=false; renderInvGrid(); document.getElementById('invResult').hidden=true; document.getElementById('invMatchWrap').hidden=true; }
+function closeInv(){ if(invPanel) invPanel.hidden=true; }
+
+function bomRowsInto(container, entries){
+  container.innerHTML='';
+  entries.forEach(function(b){
+    var row=document.createElement('div'); row.className='bomRow';
+    row.innerHTML='<span class="bomN"></span><b class="bomC">×'+b.count+'</b>';
+    row.querySelector('.bomN').textContent = b.name; container.appendChild(row);
+  });
+  if(!entries.length){ var e=document.createElement('div'); e.className='bomN'; e.style.opacity='.6'; e.textContent='—'; container.appendChild(e); }
+}
+function doInvBuild(){
+  if (invTotal()<1){ toast('הוסיפו קודם חלקים למלאי'); return; }
+  var r = autoBuildFromInventory(inv);
+  if (r.empty){ toast('לא הצלחתי לבנות מהחלקים האלה — נסו להוסיף לבנים'); return; }
+  window.BrickAPI.build({ parts:r.parts });
+  setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 300);
+  // תוצאה: מה נוצל / מה נשאר
+  var res=document.getElementById('invResult'); res.hidden=false;
+  document.getElementById('invResTitle').textContent = t('נבנה!') + ' ' + r.parts.length + ' ' + t('חלקים') + ' · ' + r.W + '×' + r.D;
+  var usedEntries = Object.keys(r.used).filter(function(k){return r.used[k]>0;}).map(function(k){ return { name:invName(k), count:r.used[k] }; }).sort(function(a,b){return b.count-a.count;});
+  var leftEntries = Object.keys(r.leftover).filter(function(k){return r.leftover[k]>0;}).map(function(k){ return { name:invName(k), count:r.leftover[k] }; }).sort(function(a,b){return b.count-a.count;});
+  bomRowsInto(document.getElementById('invUsed'), usedEntries);
+  bomRowsInto(document.getElementById('invLeft'), leftEntries);
+  toast('🏠 ' + t('נבנה!') + ' ' + r.parts.length + ' ' + t('חלקים'));
+}
+function doInvMatch(){
+  var wrap=document.getElementById('invMatchWrap'); wrap.hidden=false;
+  var list=document.getElementById('invMatchList'); list.innerHTML='';
+  var res=invMatches(inv, 24), any=false;
+  res.forEach(function(r){
+    if (!r.ok && r.cover<0.5) return; any=true;
+    var card=document.createElement('button'); card.className='invMatchCard'+(r.ok?' ok':'');
+    var im=document.createElement('img'); im.className='invMatchImg'; im.alt=''; im.src=modelThumb(modelProg(r.m), r.m.id);
+    var nm=document.createElement('span'); nm.className='invMatchN'; nm.textContent=r.m.name;
+    var st=document.createElement('span'); st.className='invMatchS';
+    st.textContent = r.ok ? ('✓ '+t('אפשר לבנות')) : (Math.round(r.cover*100)+'% · '+t('חסר')+' '+r.missing.slice(0,2).map(function(x){return x.name;}).join(', '));
+    card.appendChild(im); card.appendChild(nm); card.appendChild(st);
+    card.addEventListener('click', function(){ window.BrickAPI.build(modelProg(r.m)); closeInv(); setTimeout(function(){ if(window.__fitView) window.__fitView(); },300); toast(t('נבנה על הלוח — אפשר לערוך')); });
+    list.appendChild(card);
+  });
+  if (!any){ var e=document.createElement('div'); e.className='invEmpty'; e.textContent=t('אין עדיין דגם שמתאים — הוסיפו עוד לבנים 1×1'); list.appendChild(e); }
+}
+if (document.getElementById('btnInv')) document.getElementById('btnInv').addEventListener('click', openInv);
+if (document.getElementById('btnCloseInv')) document.getElementById('btnCloseInv').addEventListener('click', closeInv);
+if (invPanel) invPanel.addEventListener('click', function(e){ if (e.target===invPanel) closeInv(); });
+if (document.getElementById('btnInvBuild')) document.getElementById('btnInvBuild').addEventListener('click', doInvBuild);
+if (document.getElementById('btnInvMatch')) document.getElementById('btnInvMatch').addEventListener('click', doInvMatch);
+if (document.getElementById('btnInvClear')) document.getElementById('btnInvClear').addEventListener('click', function(){ inv={}; saveInv(); renderInvGrid(); document.getElementById('invResult').hidden=true; document.getElementById('invMatchWrap').hidden=true; });
+Array.prototype.forEach.call(document.querySelectorAll('.invPresetBtn'), function(b){
+  b.addEventListener('click', function(){ var p=INV_PRESETS[b.dataset.preset]; if(!p) return; inv={}; Object.keys(p).forEach(function(k){ inv[k]=p[k]; }); saveInv(); renderInvGrid(); document.getElementById('invResult').hidden=true; document.getElementById('invMatchWrap').hidden=true; toast(t('מלאי נטען')+' · '+invTotal()+' '+t('חלקים')); });
+});
+window.__invBuild = function(src){ return autoBuildFromInventory(src||inv); };
+window.__invMatches = function(src){ return invMatches(src||inv, 12).map(function(r){ return { name:r.m.name, ok:r.ok, cover:+r.cover.toFixed(2), parts:r.parts }; }); };
+window.__setInv = function(o){ inv = o||{}; saveInv(); renderInvGrid(); };
+
 syncTop();
 requestAnimationFrame(tick);
 syncTierUI();
