@@ -23,6 +23,56 @@ function defColor(t){ return (PD.parts[t] && PD.parts[t].col) || null; }
 
 var COLORS = ['#c91a09','#fe8a18','#f2cd37','#237841','#0055bf','#f2f3f2','#1b2a34','#a0a5a9'];
 
+/* ---------- i18n: תרגום ל-20 שפות (מפתח = המחרוזת העברית) ---------- */
+var I18N = window.BB_I18N || { langs:[{code:'he',name:'עברית',dir:'rtl'}], t:{} };
+var curLang = (function(){ try { return localStorage.getItem('bb-lang') || 'he'; } catch(e){ return 'he'; } })();
+if (!I18N.langs.some(function(l){ return l.code === curLang; })) curLang = 'he';
+/* מתרגם מחרוזת עברית; תומך בתבניות עם מספרים ("נבחרו 3 חלקים" → "3 parts selected") */
+function _pickTr(dict, he){
+  if (!dict) return null;
+  if (dict[he] != null) return dict[he];
+  var nums = []; var key = String(he).replace(/\d+/g, function(m){ nums.push(m); return '{n}'; });
+  if (dict[key] != null){ var i = 0; return dict[key].replace(/\{n\}/g, function(){ return nums[i++]; }); }
+  return null;
+}
+function t(he){
+  if (curLang === 'he' || he == null) return he;
+  var r = _pickTr(I18N.t[curLang], he);
+  if (r != null) return r;
+  if (curLang !== 'en'){ r = _pickTr(I18N.t.en, he); if (r != null) return r; }   // אנגלית = ברירת-מחדל אם חסר תרגום
+  return he;
+}
+var _i18nText = [], _i18nAttr = [];
+function snapshotI18n(){
+  _i18nText = []; _i18nAttr = [];
+  var walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  var n; while ((n = walk.nextNode())){
+    var raw = n.nodeValue, s = raw.trim();
+    if (s && /[֐-׿]/.test(s)) _i18nText.push({ node:n, raw:raw, he:s });
+  }
+  ['placeholder','title','value','aria-label'].forEach(function(a){
+    Array.prototype.forEach.call(document.querySelectorAll('[' + a + ']'), function(el){
+      var v = el.getAttribute(a);
+      if (v && /[֐-׿]/.test(v)) _i18nAttr.push({ el:el, attr:a, he:v });
+    });
+  });
+}
+function applyStaticI18n(){
+  _i18nText.forEach(function(it){ it.node.nodeValue = it.raw.replace(it.he, t(it.he)); });
+  _i18nAttr.forEach(function(it){ it.el.setAttribute(it.attr, t(it.he)); });
+}
+function setLang(code){
+  curLang = code;
+  try { localStorage.setItem('bb-lang', code); } catch(e){}
+  var L = I18N.langs.filter(function(l){ return l.code === code; })[0] || { dir:'rtl' };
+  document.documentElement.lang = code;
+  document.documentElement.dir = L.dir;
+  document.body.dir = L.dir;
+  document.body.style.direction = L.dir;
+  applyStaticI18n();
+  if (typeof rebuildDynamicI18n === 'function') rebuildDynamicI18n();
+}
+
 /* ---------- מצב ---------- */
 var parts = [];          // {id,t,x,z,l,r,c}
 var nextId = 1;
@@ -1873,6 +1923,26 @@ addPanel.addEventListener('click', function(e){ if (e.target === addPanel) close
 
 /* חלון-ההוספה התחתון + פס-הזום הוסרו — ההוספה בתפריט העליון, הזום במחוות/גלגלת. */
 
+/* ===== בורר שפה ===== */
+var langPanel = document.getElementById('langPanel');
+function buildLangGrid(){
+  var g = document.getElementById('langGrid'); g.innerHTML = '';
+  I18N.langs.forEach(function(L){
+    var b = document.createElement('button');
+    b.className = 'langBtn' + (L.code === curLang ? ' on' : '');
+    b.textContent = L.name;
+    b.addEventListener('click', function(){
+      setLang(L.code);
+      buildLangGrid();
+      langPanel.hidden = true;
+    });
+    g.appendChild(b);
+  });
+}
+document.getElementById('btnLang').addEventListener('click', function(){ buildLangGrid(); langPanel.hidden = false; });
+document.getElementById('btnCloseLang').addEventListener('click', function(){ langPanel.hidden = true; });
+langPanel.addEventListener('click', function(e){ if (e.target === langPanel) langPanel.hidden = true; });
+
 /* ===== מדריך ויזואלי ===== */
 var helpPanel = document.getElementById('helpPanel');
 document.getElementById('btnHelp').addEventListener('click', function(){ helpPanel.hidden = false; });
@@ -2467,7 +2537,7 @@ function switchUser(name){
 var toastTimer = null;
 function toast(msg){
   var h = document.getElementById('hint');
-  h.textContent = msg;
+  h.textContent = t(msg);
   h.classList.remove('gone');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(function(){ h.classList.add('gone'); }, 3500);
@@ -3136,6 +3206,11 @@ el('btnDoUpgrade').addEventListener('click', function(){
 syncTop();
 requestAnimationFrame(tick);
 syncTierUI();
+/* i18n: צילום המחרוזות הסטטיות אחרי שכל הממשק נבנה, והחלת השפה השמורה */
+snapshotI18n();
+if (curLang !== 'he') setLang(curLang);
+window.__setLang = setLang;
+window.__curLang = function(){ return curLang; };
 window.__ready = true;
 window.__isPro = function(){ return isPro(); };
 window.__buildTest = function(){

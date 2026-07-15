@@ -347,6 +347,13 @@
     .stats{display:none;}
   }
 
+  /* בורר שפה */
+  .langGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-height:64vh;overflow-y:auto;padding:2px;}
+  .langBtn{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);border-radius:11px;
+    padding:12px 14px;font-size:15px;font-family:inherit;text-align:start;}
+  .langBtn.on{background:var(--accent);color:var(--accent-ink);font-weight:700;}
+  .langBtn:active{transform:scale(.97);}
+
   /* מדריך ויזואלי */
   .helpList{display:flex;flex-direction:column;gap:4px;max-height:64vh;overflow-y:auto;}
   .helpRow{display:flex;gap:12px;align-items:flex-start;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,.06);}
@@ -440,6 +447,7 @@
   <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
   <div class="spacer"></div>
   <button class="tbtn" id="btnAI" title="בנה עם AI">🤖</button>
+  <button class="tbtn" id="btnLang" title="שפה / Language">🌐</button>
   <button class="tbtn" id="btnHelp" title="איך בונים? מדריך קצר">❓</button>
   <button class="tbtn wide" id="btnAddTop" title="הוסף חלק — חלון גדול עם תמונות">➕ חלק</button>
   <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
@@ -668,6 +676,16 @@
   </div>
 </div>
 
+<div class="search" id="langPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">🌐 שפה / Language</b>
+      <button class="tbtn" id="btnCloseLang">✕</button>
+    </div>
+    <div class="langGrid" id="langGrid"></div>
+  </div>
+</div>
+
 <div class="search" id="helpPanel" hidden>
   <div class="searchBox pill">
     <div class="searchHead">
@@ -734,4 +752,5 @@
 <script src="three.min.js"></script>
 <script src="parts-data.js"></script>
 <script src="catalog.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
