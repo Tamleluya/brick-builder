@@ -454,6 +454,7 @@ function castAt(cx, cy, excludeId){
 var ptrs = new Map();
 var mode = 'idle';       // idle | maybe | orbit | drag | pinch
 var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null, dragGroup=null, dragPreferL=0;
+var autoPilot = (function(){ try { return localStorage.getItem('bb-autopilot') !== '0'; } catch(e){ return true; } })();  // ✈️ הצמדה-אוטומטית לגובה, ברירת-מחדל דלוק
 var pinch = null;
 
 function vibrate(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
@@ -613,9 +614,14 @@ canvas.addEventListener('pointermove', function(e){
       if (dragGroup.length === 1){
         var p = dragGroup[0];
         p.free = false; if (p.pos) delete p.pos;
-        // שומרים על הגובה שנבחר (למשל אחרי הרמה); מושיבים מחדש רק אם יש התנגשות
-        p.l = dragPreferL;
-        if (collides(p)) p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+        if (autoPilot){
+          // ✈️ טייס-אוטומטי: הקובייה תמיד יושבת על התמיכה הכי גבוהה מתחת לטביעת-הרגל
+          // → נצמדת אוטומטית מעל הקובייה שמתחת לסמן, בלי תלות בזווית המצלמה.
+          p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+        } else {
+          p.l = dragPreferL;
+          if (collides(p)) p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+        }
       }
       dragGroup.forEach(placeMesh);
     }
@@ -700,6 +706,15 @@ canvas.addEventListener('wheel', function(e){
 }, {passive:false});
 
 /* ---------- כפתורים ---------- */
+var _btnAuto = document.getElementById('btnAuto');
+function syncAuto(){ if (_btnAuto){ _btnAuto.classList.toggle('active', autoPilot); _btnAuto.style.opacity = autoPilot ? '1' : '0.45'; } }
+if (_btnAuto) _btnAuto.addEventListener('click', function(){
+  autoPilot = !autoPilot;
+  try { localStorage.setItem('bb-autopilot', autoPilot ? '1' : '0'); } catch(e){}
+  syncAuto();
+  toast(autoPilot ? '✈️ טייס אוטומטי דלוק — הקובייה נצמדת מעל מה שמתחתיה' : 'טייס אוטומטי כבוי — גובה חופשי');
+});
+syncAuto();
 document.getElementById('btnUndo').addEventListener('click', undo);
 document.getElementById('btnRedo').addEventListener('click', redo);
 /* מחיקה מיידית — הביטול (↩) מחזיר, אז אין צורך באישור */
