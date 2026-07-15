@@ -113,11 +113,13 @@
   .galNm{padding:6px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
   .movepad{
-    position:fixed;top:calc(env(safe-area-inset-top,0px) + 62px);left:12px;z-index:12;
+    position:fixed;top:50%;left:12px;transform:translateY(-50%);z-index:12;
     display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);
     gap:5px;padding:9px;direction:ltr;
   }
   .movepad[hidden]{display:none;}
+  .mvhub{cursor:pointer;}
+  .mvhub:active{color:var(--accent);}
   .mvb{
     border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
@@ -286,6 +288,36 @@
   .mvb[data-dir="down"]{grid-area:3/1}
   .mvb.up,.mvb.down{color:var(--accent);font-size:16px;font-weight:700;}
 
+  /* תפריט "עוד כלים" — מרכז את הכפתורים המשניים עם תוויות ברורות */
+  .moreMenu{
+    position:fixed;top:calc(env(safe-area-inset-top,0px) + 60px);left:12px;z-index:40;
+    display:flex;flex-direction:column;gap:5px;padding:8px;min-width:180px;
+    background:var(--panel);backdrop-filter:blur(12px);box-shadow:0 12px 34px rgba(0,0,0,.5);
+  }
+  .moreMenu[hidden]{display:none;}
+  .tbtn.inMenu{
+    width:100%;min-width:0;justify-content:flex-start;gap:10px;padding:0 12px;height:44px;
+    background:var(--panel-soft);font-size:18px;
+  }
+  .tbtn.inMenu .mlabel{font-size:13.5px;font-weight:600;color:var(--text);}
+  .tbtn.inMenu.active{background:var(--accent);}
+  .tbtn.inMenu.active .mlabel{color:var(--accent-ink);}
+
+  /* בקרת זום קבועה */
+  .zoomPad{position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:11;
+    display:flex;flex-direction:column;gap:2px;padding:4px;overflow:hidden;}
+  .zbtn{width:44px;height:44px;border:0;cursor:pointer;background:transparent;color:var(--text);
+    font-size:24px;line-height:1;font-family:inherit;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;}
+  .zbtn:active{background:var(--accent);color:var(--accent-ink);transform:scale(.94);}
+
+  /* מסך קטן: כפתורי סרגל גדולים יותר למגע נוח */
+  @media (max-width:560px){
+    .tbtn{width:46px;min-width:46px;font-size:19px;}
+    .topbar{gap:6px;}
+    .stats{display:none;}
+  }
+
   /* מדריך ויזואלי */
   .helpList{display:flex;flex-direction:column;gap:4px;max-height:64vh;overflow-y:auto;}
   .helpRow{display:flex;gap:12px;align-items:flex-start;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,.06);}
@@ -393,6 +425,14 @@
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
+  <button class="tbtn" id="btnMore" title="עוד כלים">⋯</button>
+</div>
+
+<div class="moreMenu pill" id="moreMenu" hidden></div>
+
+<div class="zoomPad pill" id="zoomPad">
+  <button class="zbtn" id="btnZoomIn" title="התקרב">＋</button>
+  <button class="zbtn" id="btnZoomOut" title="התרחק">－</button>
 </div>
 
 <div class="movepad pill" id="movePad" hidden>

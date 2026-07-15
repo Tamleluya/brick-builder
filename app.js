@@ -326,6 +326,7 @@ function afterSel(){
   if (!has){ var cp = document.getElementById('colorPop'); if (cp) cp.hidden = true; }
   srcConnIdx = null;
   if (snapViz) refreshSnapViz();
+  movePadOn = false;   // השלט נסגר בכל שינוי בחירה — נפתח מחדש רק ב"הזז"
   updateMovePad();
 }
 function selectPart(p){ selIds = p ? [p.id] : []; if (!p) multiMode = false; afterSel(); }
@@ -989,8 +990,8 @@ partMenu.addEventListener('click', function(e){
   var b = e.target.closest('.pmBtn'); if (!b) return;
   var a = b.dataset.a;
   if (a === 'move'){
-    document.getElementById('movePad').hidden = false;
-    toast('✥ הזזה — השתמשו בחצים (למעלה משמאל) כדי להזיז לכל כיוון');
+    movePadOn = true; updateMovePad();
+    toast('✥ חצי הזזה נפתחו משמאל — ⬆⬇ לגובה, החצים לצדדים · ✥ במרכז סוגר');
   }
   else if (a === 'dup')   document.getElementById('btnDup').click();
   else if (a === 'paint') document.getElementById('btnPaint').click();
@@ -1920,6 +1921,43 @@ document.getElementById('btnHelp').addEventListener('click', function(){ helpPan
 document.getElementById('btnCloseHelp').addEventListener('click', function(){ helpPanel.hidden = true; });
 helpPanel.addEventListener('click', function(e){ if (e.target === helpPanel) helpPanel.hidden = true; });
 
+/* ===== תפריט "עוד כלים" — מרכז כפתורים משניים עם תוויות (סרגל נקי במובייל) ===== */
+(function setupMoreMenu(){
+  var moreMenu = document.getElementById('moreMenu');
+  var LABELS = {
+    btnAI:'בנה עם AI', btnAccount:'אזור אישי', btnUser:'החלפת משתמש',
+    btnGallery:'הדגמים שלי', btnShare:'שיתוף בקישור', btnSearch:'חיפוש בקטלוג',
+    btnAuto:'טייס אוטומטי (הצמדה מעל)', btnPlay:'הנעת גלגלי שיניים', btnMove:'צעד עדין להזזה'
+  };
+  Object.keys(LABELS).forEach(function(id){
+    var b = document.getElementById(id); if (!b) return;
+    b.classList.add('inMenu');
+    var s = document.createElement('span'); s.className = 'mlabel'; s.textContent = LABELS[id];
+    b.appendChild(s);
+    b.addEventListener('click', function(){ moreMenu.hidden = true; });
+    moreMenu.appendChild(b);
+  });
+  var btnMore = document.getElementById('btnMore');
+  btnMore.addEventListener('click', function(e){ e.stopPropagation(); moreMenu.hidden = !moreMenu.hidden; });
+  document.addEventListener('click', function(e){
+    if (!moreMenu.hidden && !moreMenu.contains(e.target) && e.target !== btnMore) moreMenu.hidden = true;
+  });
+})();
+
+/* ===== בקרת זום ===== */
+function zoomBy(f){ camR *= f; updateCamera(); }
+(function(){
+  var zi = document.getElementById('btnZoomIn'), zo = document.getElementById('btnZoomOut');
+  function hold(btn, f){
+    var iv = null;
+    function start(e){ e.preventDefault(); zoomBy(f); iv = setInterval(function(){ zoomBy(f); }, 90); }
+    function stop(){ if (iv){ clearInterval(iv); iv = null; } }
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', stop); btn.addEventListener('pointerleave', stop); btn.addEventListener('pointercancel', stop);
+  }
+  hold(zi, 0.9); hold(zo, 1.11);
+})();
+
 /* ---------- תצוגת נקודות חיבור (מנתוני ה-shadow האמיתיים) ---------- */
 var snapViz = false;
 var snapGroup = new THREE.Group();
@@ -2308,12 +2346,14 @@ document.getElementById('btnPlay').addEventListener('click', function(){
 });
 /* ---------- שלט ניווט (נפתח אוטומטית בבחירת חלק) ---------- */
 var padFine = false;                 // ✥ מדליק צעד עדין
+var movePadOn = false;               // השלט נפתח רק בלחיצה על "הזז" בתפריט החלק
 function padStep(){ return padFine ? 0.1 : 1.0; }       // צעד אופקי: בליטה שלמה / עדין
 function padVStep(){ return padFine ? LU : 2 * LU; }    // צעד אנכי: פלטה שלמה / חצי-פלטה
-/* השלט מופיע תמיד כשחלק נבחר — "כל פעם שלוחצים על קובייה" */
 function updateMovePad(){
-  document.getElementById('movePad').hidden = !selIds.length;
+  document.getElementById('movePad').hidden = !(movePadOn && selIds.length);
 }
+/* הקשה על ה-✥ המרכזי סוגרת את השלט */
+document.querySelector('.mvhub').addEventListener('click', function(){ movePadOn = false; updateMovePad(); });
 document.getElementById('btnMove').addEventListener('click', function(){
   padFine = !padFine;
   this.classList.toggle('active', padFine);
