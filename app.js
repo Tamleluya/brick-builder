@@ -2349,8 +2349,45 @@ var BUILD_JSON_SCHEMA = {
   },
   required: ['name', 'parts']
 };
+/* מחולל-מכוניות פרמטרי — כמות החלקים נבחרת ע"י המשתמש. נשאר בגבולות הלוח (BOARD). */
+function genCarProgram(target){
+  target = Math.max(80, Math.min(2600, Math.round(target || 600)));
+  // רזולוציה: פלטות 1×1 לכמות גבוהה, 2×2 לנמוכה
+  var RES = target >= 700 ? 1 : 2, UNIT = RES === 1 ? '3024' : '3022';
+  // גודל הרכב מתכווץ/גדל כדי לפגוע ביעד, אך תמיד ≤ הלוח
+  var maxLen = BOARD - 2;
+  var s = Math.sqrt(target / (RES === 1 ? 1700 : 480));
+  var LEN = Math.max(12, Math.min(maxLen, Math.round((RES===1?30:26) * s)));
+  var W = Math.max(6, Math.min(12, Math.round((RES===1?11:9) * Math.min(1.15, s)))); if (W % 2) W++;
+  var BODY='#1f4e8f', BODY2='#143a6c', DARK='#0b0c0f', GLASS='#183a4d', TIRE='#141414', LAMP='#ffe9a8', TAIL='#e01515';
+  var zc = (W - 1) / 2, out = [];
+  function baseH(x){ var f = x / LEN;
+    if (f>=0.91) return 6; if (f>=0.63) return 10; if (f>=0.55) return 16;
+    if (f>=0.37) return 18; if (f>=0.28) return 15; if (f>=0.11) return 11; return 8; }
+  function topH(x,z){ var b=baseH(x), d=Math.abs(z-zc), drop = d>=zc-1?4 : d>=zc-2?2 : 0; return Math.max(4, b-drop); }
+  var WHX = [Math.round(LEN*0.78), Math.round(LEN*0.2)];
+  function cabin(x,z){ return x>=Math.round(LEN*0.35) && x<=Math.round(LEN*0.6) && z>=3 && z<=W-4; }
+  // גוף מוסט פנימה (z=RES..W-1-RES) — הגלגלים יושבים מבחוץ וגלויים
+  var zLo = RES, zHi = W - 1 - RES;
+  for (var x=0;x<LEN;x+=RES) for (var z=zLo;z<=zHi;z+=RES){
+    var h = topH(x,z);
+    for (var l=0;l<h;l+=2){
+      var c = l<2 ? DARK : (cabin(x,z)&&l>=12 ? GLASS : (z<=zLo||z>=zHi ? BODY2 : BODY));
+      out.push({type:UNIT,x:x,z:z,l:l,color:c});
+    }
+  }
+  WHX.forEach(function(wx){ out.push({type:'3482c01',x:wx,z:0,l:0,color:TIRE}); out.push({type:'3482c01',x:wx,z:W-1,l:0,color:TIRE}); });
+  out.push({type:'3062b',x:LEN-1,z:3,l:4,color:LAMP}, {type:'3062b',x:LEN-1,z:W-4,l:4,color:LAMP});
+  out.push({type:'3062b',x:0,z:3,l:6,color:TAIL}, {type:'3062b',x:0,z:W-4,l:6,color:TAIL});
+  // מרכוז על הלוח
+  var ox = Math.floor((BOARD-LEN)/2), oz = Math.floor((BOARD-W)/2);
+  out.forEach(function(p){ p.x = Math.max(0, Math.min(BOARD-1, p.x+ox)); p.z = Math.max(0, Math.min(BOARD-1, p.z+oz)); });
+  return { name: 'מכונית · ' + out.length + ' חלקים', parts: out };
+}
 window.BrickAPI = {
   build: runBuildProgram,
+  buildCar: function(target){ var prog = genCarProgram(target); var r = runBuildProgram(prog); setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 400); return { parts: prog.parts.length, placed: r.placed }; },
+  carProgram: genCarProgram,
   aiPrompt: function(extra){ return aiPromptText(extra); },
   jsonSchema: function(){ return BUILD_JSON_SCHEMA; },
   clear: function(){ pushUndo(snapshot()); setModel([]); save(); },
@@ -2425,6 +2462,16 @@ function setAiMode(m){
 }
 el('aiModeStd').addEventListener('click', function(){ setAiMode('std'); });
 el('aiModeSpecial').addEventListener('click', function(){ setAiMode('special'); });
+/* מחולל מכוניות — בחירת כמות חלקים ובנייה */
+el('carParts').addEventListener('input', function(){ el('carPartsVal').textContent = this.value; });
+el('btnBuildCar').addEventListener('click', function(){
+  var n = parseInt(el('carParts').value, 10) || 800;
+  el('aiStatus').textContent = '🚗 בונה מכונית של ~' + n + ' חלקים…';
+  setTimeout(function(){
+    try { var r = window.BrickAPI.buildCar(n); el('aiPanel').hidden = true; toast('🚗 נבנתה מכונית · ' + r.placed + ' חלקים'); }
+    catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
+  }, 30);
+});
 el('btnAISaveEndpoint').addEventListener('click', function(){
   var v = el('aiEndpointInput').value.trim();
   try { if (v) localStorage.setItem('bb-ai-endpoint', v); else localStorage.removeItem('bb-ai-endpoint'); } catch(e){}
