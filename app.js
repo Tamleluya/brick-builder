@@ -2503,6 +2503,18 @@ window.__buildTest = function(){
   return { placed: res.placed, unresolved: res.unresolved, partCount: parts.length };
 };
 window.__partCount = function(){ return parts.length; };
+/* ממקד את המצלמה על כל הדגם (לצילומים) */
+window.__fitView = function(){
+  if (!parts.length) return false;
+  var box = new THREE.Box3(), tmp;
+  meshes.forEach(function(m){ box.expandByObject(m); });
+  if (box.isEmpty()) return false;
+  var c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  camTarget.copy(c);
+  camR = Math.max(s.x, s.z, s.y * 2) * 1.15 + 6;
+  updateCamera();
+  return true;
+};
 /* אורקל-מידות: מחזיר את טביעת-הרגל האמיתית של חלק (טעון או מהקטלוג) — בסיס לשיבוץ מדויק של חלקים מיוחדים */
 window.__dims = function(id){ var p = PD.parts[id]; return p ? {id:id, n:p.n, w:p.w, d:p.d, h:p.h, mag:!!p.mag, cat:p.cat, snaps:(p.s||[]).length} : null; };
 window.__loadDims = function(id){
