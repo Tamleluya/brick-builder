@@ -274,10 +274,9 @@ function removePart(p){
   parts = parts.filter(function(q){ return q.id !== p.id; });
 }
 function rebuildAll(){
-  parts.slice().forEach(function(p){
-    var mesh = meshes.get(p.id);
-    if (mesh) partsGroup.remove(mesh);
-  });
+  // חשוב: להסיר את כל ה-mesh-ים הקיימים (לפי המפה), לא רק את אלה שברשימה החדשה —
+  // אחרת אחרי undo נשארים "רוחות" של חלקים שנמחקו: נראים אך לא ניתנים לבחירה/הזזה.
+  meshes.forEach(function(mesh){ partsGroup.remove(mesh); });
   meshes.clear(); occ.clear();
   var list = parts; parts = [];
   list.forEach(function(p){ addPart(p); });
@@ -314,11 +313,11 @@ function afterSel(){
   applySelVisual();
   syncPalette();
   var has = selIds.length > 0, multi = selIds.length > 1;
-  // חלק בודד → תפריט צמוד-לחלק (ברור); בחירה מרובה → סרגל הפעולות התחתון
-  document.getElementById('actions').classList.toggle('on', multi);
+  // ממשק אחד ברור: סרגל פעולות תחתון (לא מכסה את הבנייה) לכל בחירה
+  document.getElementById('actions').classList.toggle('on', has);
   document.body.classList.toggle('hasSel', has);
   document.body.classList.toggle('multiSel', multi);
-  if (selIds.length === 1) showPartMenu(); else hidePartMenu();
+  hidePartMenu();
   var sc = document.getElementById('selCount');
   if (sc){ sc.textContent = multi ? selIds.length + ' חלקים נבחרו' : ''; sc.style.display = multi ? '' : 'none'; }
   var mb = document.getElementById('btnMulti');
@@ -1927,7 +1926,7 @@ helpPanel.addEventListener('click', function(e){ if (e.target === helpPanel) hel
   var LABELS = {
     btnAI:'בנה עם AI', btnAccount:'אזור אישי', btnUser:'החלפת משתמש',
     btnGallery:'הדגמים שלי', btnShare:'שיתוף בקישור', btnSearch:'חיפוש בקטלוג',
-    btnAuto:'טייס אוטומטי (הצמדה מעל)', btnPlay:'הנעת גלגלי שיניים', btnMove:'צעד עדין להזזה'
+    btnAuto:'טייס אוטומטי (הצמדה מעל)', btnPlay:'הנעת גלגלי שיניים'
   };
   Object.keys(LABELS).forEach(function(id){
     var b = document.getElementById(id); if (!b) return;
@@ -2345,22 +2344,49 @@ document.getElementById('btnPlay').addEventListener('click', function(){
   }
 });
 /* ---------- שלט ניווט (נפתח אוטומטית בבחירת חלק) ---------- */
-var padFine = false;                 // ✥ מדליק צעד עדין
-var movePadOn = false;               // השלט נפתח רק בלחיצה על "הזז" בתפריט החלק
-function padStep(){ return padFine ? 0.1 : 1.0; }       // צעד אופקי: בליטה שלמה / עדין
-function padVStep(){ return padFine ? LU : 2 * LU; }    // צעד אנכי: פלטה שלמה / חצי-פלטה
+var BRICKH = 6 * LU;                  // גובה לבנה 1×1 (3 פלטות)
+var stepFrac = 0.5;                   // צעד ההזזה — חלק מלבנה 1×1 (¼ ⅓ ½ 1)
+var movePadOn = false;               // השלט נפתח רק בלחיצה על "הזז"
+function padStep(){ return stepFrac * 1.0; }        // אופקי: חלק מרוחב בליטה
+function padVStep(){ return stepFrac * BRICKH; }    // אנכי: חלק מגובה לבנה (⅓ = פלטה)
 function updateMovePad(){
   document.getElementById('movePad').hidden = !(movePadOn && selIds.length);
 }
-/* הקשה על ה-✥ המרכזי סוגרת את השלט */
-document.querySelector('.mvhub').addEventListener('click', function(){ movePadOn = false; updateMovePad(); });
-document.getElementById('btnMove').addEventListener('click', function(){
-  padFine = !padFine;
-  this.classList.toggle('active', padFine);
-  toast(padFine
-    ? '✥ צעד עדין דלוק — הזזה זעירה לכיוונון מדויק'
-    : 'צעד רגיל — כל לחיצה מזיזה בליטה שלמה (למעלה/למטה = פלטה)');
+/* בורר גודל הצעד */
+Array.prototype.forEach.call(document.querySelectorAll('.mvStepBtn'), function(b){
+  b.addEventListener('click', function(){
+    stepFrac = parseFloat(b.dataset.frac);
+    Array.prototype.forEach.call(document.querySelectorAll('.mvStepBtn'), function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
 });
+function closeMovePad(){ movePadOn = false; updateMovePad(); }
+document.querySelector('.mvhub').addEventListener('click', closeMovePad);
+document.getElementById('btnMoveClose').addEventListener('click', closeMovePad);
+document.getElementById('btnMoveOpen').addEventListener('click', function(){
+  if (!selIds.length){ toast('בחרו חלק תחילה'); return; }
+  movePadOn = true; updateMovePad();
+  toast('✥ צעד הזזה: בחרו ¼/⅓/½/לבנה · ⊙ "הצמד לרשת" מיישר חזרה');
+});
+/* הצמדה חזרה לרשת — מחזיר חלק "צף" למקום מסודר על הקוביות שמתחתיו */
+function snapSelToGrid(){
+  var ps = selParts(); if (!ps.length) return;
+  pushUndo(snapshot());
+  ps.forEach(function(p){
+    if (p.free && p.pos){
+      var gp = gridPos(p);                                  // המיקום שהיה לו על הרשת ב-x,z הנוכחיים
+      var f = fp(p);
+      p.x = Math.max(0, Math.min(BOARD - f.w, p.x + Math.round(p.pos[0] - gp.x)));
+      p.z = Math.max(0, Math.min(BOARD - f.d, p.z + Math.round(p.pos[2] - gp.z)));
+    }
+    p.free = false; if (p.pos) delete p.pos;
+    remOcc(p);
+    p.l = Math.min(MAXH, heightAt(cellsOf(p), p.id));
+    addOcc(p); placeMesh(p);
+  });
+  save(); vibrate(9); toast('הוצמד לרשת ✓');
+}
+document.getElementById('btnSnapGrid').addEventListener('click', snapSelToGrid);
 /* כיוון מצלמה נצמד לציר הלוח הקרוב ביותר (X או Z) — כדי שהתנועה תהיה ישרה ולא באלכסון */
 function snapXZ(v){
   if (Math.abs(v.x) >= Math.abs(v.z)) return new THREE.Vector3((v.x >= 0 ? 1 : -1), 0, 0);

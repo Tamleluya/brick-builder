@@ -112,12 +112,26 @@
   .galThumb{display:block;width:100%;height:88px;object-fit:cover;background:#cfe0ec;cursor:pointer;}
   .galNm{padding:6px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
-  .movepad{
-    position:fixed;top:50%;left:12px;transform:translateY(-50%);z-index:12;
-    display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);
-    gap:5px;padding:9px;direction:ltr;
+  .movePanel{
+    position:fixed;top:50%;left:12px;transform:translateY(-50%);z-index:13;
+    padding:10px;display:flex;flex-direction:column;gap:8px;
   }
-  .movepad[hidden]{display:none;}
+  .movePanel[hidden]{display:none;}
+  .mvHead{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .mvTtl{font-size:12px;font-weight:700;color:var(--accent);}
+  .mvClose{border:0;background:var(--panel-soft);color:var(--text);border-radius:8px;width:24px;height:24px;font-size:12px;cursor:pointer;padding:0;}
+  .mvStep{display:flex;align-items:center;gap:4px;}
+  .mvStepLbl{font-size:10.5px;color:var(--muted);margin-inline-end:2px;}
+  .mvStepBtn{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:8px;min-width:30px;height:28px;font-size:13px;font-family:inherit;padding:0 6px;}
+  .mvStepBtn.on{background:var(--accent);color:var(--accent-ink);font-weight:700;}
+  .movepad{
+    display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);
+    gap:5px;direction:ltr;
+  }
+  .mvSnap{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:10px;padding:9px;font-size:12.5px;font-family:inherit;}
+  .mvSnap:active{background:var(--accent);color:var(--accent-ink);}
   .mvhub{cursor:pointer;}
   .mvhub:active{color:var(--accent);}
   .mvb{
@@ -421,7 +435,6 @@
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
   <button class="tbtn" id="btnAuto" title="טייס אוטומטי — הקובייה נצמדת מעל מה שמתחתיה בזמן גרירה">✈️</button>
   <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
-  <button class="tbtn" id="btnMove" title="שלט הזזה עדינה">✥</button>
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
@@ -435,14 +448,28 @@
   <button class="zbtn" id="btnZoomOut" title="התרחק">－</button>
 </div>
 
-<div class="movepad pill" id="movePad" hidden>
-  <button class="mvb up" data-dir="up" aria-label="הגבה">⬆</button>
-  <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
-  <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
-  <span class="mvhub">✥</span>
-  <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
-  <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
-  <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
+<div class="movePanel pill" id="movePad" hidden>
+  <div class="mvHead">
+    <span class="mvTtl">הזזה עדינה</span>
+    <button class="mvClose" id="btnMoveClose" title="סגור">✕</button>
+  </div>
+  <div class="mvStep" id="mvStep">
+    <span class="mvStepLbl">צעד:</span>
+    <button class="mvStepBtn" data-frac="0.25">¼</button>
+    <button class="mvStepBtn" data-frac="0.33333">⅓</button>
+    <button class="mvStepBtn on" data-frac="0.5">½</button>
+    <button class="mvStepBtn" data-frac="1">לבנה</button>
+  </div>
+  <div class="movepad">
+    <button class="mvb up" data-dir="up" aria-label="הגבה">⬆</button>
+    <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
+    <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
+    <span class="mvhub">✥</span>
+    <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
+    <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
+    <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
+  </div>
+  <button class="mvSnap" id="btnSnapGrid">⊙ הצמד לרשת</button>
 </div>
 
 <button class="tbtn addBot" id="btnAddBot" title="הוסף חלק — רשימה מהירה">➕<small>הוסף</small></button>
@@ -472,6 +499,7 @@
 <div class="selCount pill" id="selCount"></div>
 
 <div class="actions pill" id="actions">
+  <button class="abtn" id="btnMoveOpen" title="פתח שלט הזזה">✥ הזז</button>
   <button class="abtn" id="btnMulti" title="בחירה מרובה">➕ בחר עוד</button>
   <button class="abtn" id="btnUp" title="הרמה בגובה">⬆ הרם</button>
   <button class="abtn" id="btnDown" title="הורדה בגובה">⬇ הורד</button>
