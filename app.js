@@ -2300,45 +2300,73 @@ document.getElementById('btnSubClose').addEventListener('click', function(){
    גלגלים משתלבים כשהמרחק בין הצירים שווה לסכום רדיוסי הפיץ' (שיניים/16 ביחידות בליטה).
    BFS על גרף ההשתלבות מפיץ יחס תמסורת (-Na/Nb) ופאזה שמשלבת שן-מול-מרווח. */
 var spinOn = false, spinNodes = null, spinA = 0;
-function gearCenter(p){ var f = fp(p); return {x: p.x + f.w/2, z: p.z + f.d/2}; }
+var _Y = new THREE.Vector3(0, 1, 0), _spinQ = new THREE.Quaternion();
+/* מרכז גלגל-השיניים בעולם (עובד בכל כיוון — שכוב או ניצב) */
+function gearWorldCenter(p){
+  var m = meshes.get(p.id); if (!m) return null;
+  m.updateMatrixWorld(true);
+  return new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+}
+/* וקטור במישור הגלגל (מאונך לציר הסרן) — לחישוב זווית השתלבות השיניים */
+function gearPerpU(axis){
+  var t = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  return t.sub(axis.clone().multiplyScalar(t.dot(axis))).normalize();
+}
+/* מנוע גלגלי-שיניים: גלגל מניע (driver) נבחר → מסובב רק גלגלים שנוגעים בו (follower),
+   בכיוון הפוך ובמהירות לפי יחס השיניים. עובד בכל כיוון בזכות סיבוב סביב ציר-הסרן המקומי. */
 function buildSpin(){
-  var pool = parts.filter(function(p){ return PD.parts[p.t].teeth && upOf(p).y > 0.99; });
-  // אם יש בחירה — מניעים רק את הגלגלים הנבחרים
-  var selGears = selParts().filter(function(p){ return PD.parts[p.t].teeth; });
-  if (selGears.length) pool = selGears.filter(function(p){ return upOf(p).y > 0.99; });
-  var nodes = pool.map(function(p){
+  var nodes = parts.filter(function(p){ return PD.parts[p.t].teeth; }).map(function(p){
     var n = PD.parts[p.t].teeth;
-    return {p: p, c: gearCenter(p), n: n, r: n/16, ratio: 0, phase: 0, seen: false};
-  });
-  for (var i = 0; i < nodes.length; i++){
-    if (nodes[i].seen) continue;
-    nodes[i].seen = true;
-    nodes[i].ratio = 1;
-    nodes[i].phase = yawOf(nodes[i].p);
-    var q = [nodes[i]];
+    var axis = upOf(p).normalize();
+    return { p:p, n:n, r:n/16, c:gearWorldCenter(p), axis:axis, u:gearPerpU(axis),
+             base:quatOf(p), ratio:0, phase:0, seen:false };
+  }).filter(function(nd){ return nd.c; });
+  // המניע = הגלגל(ים) הנבחר(ים); אם אין בחירה — כל רכבת-גלגלים מקבלת מניע משלה
+  var selGears = selParts().filter(function(p){ return PD.parts[p.t].teeth; });
+  var seeds = selGears.length ? nodes.filter(function(nd){ return selGears.indexOf(nd.p) >= 0; }) : nodes;
+  function mesh2(a, b){
+    if (Math.abs(a.axis.dot(b.axis)) < 0.94) return null;      // צירים מקבילים
+    var d = b.c.clone().sub(a.c);
+    var axial = d.dot(a.axis);
+    if (Math.abs(axial) > 0.5) return null;                    // באותו מישור (לא זה-מעל-זה)
+    var planar = Math.sqrt(Math.max(0, d.lengthSq() - axial * axial));
+    if (Math.abs(planar - (a.r + b.r)) > 0.5) return null;     // מרחק ≈ סכום הרדיוסים → משתלבים
+    var w = new THREE.Vector3().crossVectors(a.u, a.axis);     // ציר-מישור שני
+    return Math.atan2(d.dot(a.u), d.dot(w));                   // זווית ההשתלבות
+  }
+  seeds.forEach(function(seed){
+    if (seed.seen) return;
+    seed.seen = true; seed.ratio = 1; seed.phase = 0;
+    var q = [seed];
     while (q.length){
       var a = q.shift();
       nodes.forEach(function(b){
-        if (b.seen || Math.abs(b.p.l - a.p.l) > 2) return;   // אותה שכבה (סבולת לחצאי-פלטה)
-        var dx = b.c.x - a.c.x, dz = b.c.z - a.c.z;
-        if (Math.abs(Math.hypot(dx, dz) - (a.r + b.r)) > 0.34) return; // סבולת רחבה יותר להשתלבות
-        var phi = Math.atan2(dx, dz);
+        if (b.seen) return;
+        var phi = mesh2(a, b);
+        if (phi === null) return;
         var k = a.n / b.n;
-        b.ratio = -k * a.ratio;
-        b.phase = -k * a.phase + (1 + k) * phi + Math.PI / b.n;
+        b.ratio = -k * a.ratio;                                // כיוון הפוך + מהירות לפי יחס-שיניים
+        b.phase = -k * a.phase + (1 + k) * phi + Math.PI / b.n; // יישור שיניים
         b.seen = true;
         q.push(b);
       });
     }
-  }
-  spinNodes = nodes;
+  });
+  spinNodes = nodes.filter(function(nd){ return nd.ratio !== 0; });
 }
 document.getElementById('btnPlay').addEventListener('click', function(){
   spinOn = !spinOn;
   this.classList.toggle('active', spinOn);
   this.textContent = spinOn ? '⏸' : '▶';
-  if (spinOn){ buildSpin(); spinA = 0; }
-  else {
+  if (spinOn){
+    buildSpin(); spinA = 0;
+    var driven = spinNodes ? spinNodes.length : 0;
+    var selG = selParts().filter(function(p){ return PD.parts[p.t].teeth; }).length;
+    toast(driven
+      ? (selG ? '▶ הגלגל הנבחר מניע · ' + driven + ' גלגלים מסתובבים (הצמודים אליו, בכיוון הפוך וביחס-שיניים)'
+              : '▶ ' + driven + ' גלגלי-שיניים מסתובבים · בחרו גלגל לפני ▶ כדי לקבוע מי המניע')
+      : 'לא נמצאו גלגלי-שיניים משתלבים — הצמידו שני גלגלים כך שהשיניים נוגעות');
+  } else {
     spinNodes = null;
     parts.forEach(function(p){ placeMesh(p); });
   }
@@ -2662,7 +2690,10 @@ function tick(ts){
       spinA += dt * 0.0016;
       spinNodes.forEach(function(n){
         var mesh = meshes.get(n.p.id);
-        if (mesh) mesh.rotation.y = n.ratio * spinA + n.phase;
+        if (!mesh) return;
+        // סיבוב סביב ציר-הסרן המקומי (Y מקומי) — נכון בכל כיוון, גם כשהגלגל ניצב
+        _spinQ.setFromAxisAngle(_Y, n.ratio * spinA + n.phase);
+        mesh.quaternion.copy(n.base).multiply(_spinQ);
       });
     }
   }
@@ -3344,8 +3375,7 @@ window.__hitTest = function(x, y){
 };
 window.__gearRots = function(){
   return (spinNodes || []).map(function(n){
-    var m = meshes.get(n.p.id);
-    return m ? Math.round(m.rotation.y * 1000) / 1000 : null;
+    return { t:n.p.t, teeth:n.n, ratio:Math.round(n.ratio * 1000) / 1000, axisY:Math.round(n.axis.y * 100) / 100 };
   });
 };
 })();
