@@ -368,6 +368,8 @@ function save(){
   if (spinOn) buildSpin();
 }
 /* טעינת רשימת חלקים לסצנה, כולל הורדה מהרשת של חלקי קטלוג חסרים */
+var _onModelReady = null;
+function flushModelReady(){ var cb = _onModelReady; _onModelReady = null; if (cb) try { cb(); } catch(e){} }
 function setModel(list){
   selectPart(null);
   nextId = list.reduce(function(m,p){ return Math.max(m, p.id); }, 0) + 1;
@@ -383,7 +385,10 @@ function setModel(list){
     })).then(function(){
       missing.forEach(function(p){ if (TYPES[p.t]) addPart(p); });
       syncTop(); refreshSnapViz();
+      flushModelReady();   // אחרי שכל חלקי-הקטלוג ירדו
     });
+  } else {
+    flushModelReady();
   }
 }
 function load(){
@@ -1521,7 +1526,7 @@ function countMates(movingParts){ return findMates(movingParts).length; }
    מוצאים את זוג המחברים התואמים הקרוב ביותר, מסובבים את החלק כך שהצירים
    קו-לינאריים, ומזיזים אותו כך שנקודות המחבר מתלכדות — מיקום חופשי בתלת-ממד. */
 var CONNECT_R = 0.9; // רדיוס תפיסה (יחידות בליטה)
-function connectSnap(p, radius){
+function connectSnap(p, radius, magOnly){
   p.free = false; if (p.pos) delete p.pos;   // מתחילים ממצב רשת
   var ms = worldSnaps(p);
   if (!ms.length) return false;
@@ -1529,6 +1534,7 @@ function connectSnap(p, radius){
   var reach = (radius || CONNECT_R) + 4;
   parts.forEach(function(o){
     if (o.id === p.id) return;
+    if (magOnly && !isMag(o.t)) return;             // הצמדה-אוטומטית: רק ליעד מגנטי (פין/סרן/בסיס), לא לבליטות רגילות
     // סינון גס לפי מרחק כדי לחסוך חישוב
     var oc = partPose(o).pos, pc = partPose(p).pos;
     if (Math.abs(oc.x - pc.x) > reach || Math.abs(oc.z - pc.z) > reach || Math.abs(oc.y - pc.y) > reach) return;
@@ -1537,6 +1543,8 @@ function connectSnap(p, radius){
       os.forEach(function(b){
         if (a.g === b.g) return;                 // זכר↔נקבה בלבד
         if (Math.abs(a.r - b.r) > 2.5) return;   // קוטר תואם (כולל פין↔חור)
+        // בהצמדה-אוטומטית: דרוש צירים קו-לינאריים (חור-גלגל אופקי → פין אופקי, לא בליטה אנכית)
+        if (magOnly && Math.abs(a.a.dot(b.a)) < 0.7) return;
         var d = a.v.distanceTo(b.v);
         if (d < bestD){ bestD = d; best = {a:a, b:b}; }
       });
@@ -2198,6 +2206,18 @@ function resolveType(name){
   }
   return null;
 }
+/* Assembler מבוסס-חיבורים: מצמיד כל חלק מגנטי (גלגל/פין/סרן) למחבר תואם בקרבתו
+   (למשל גלגלים לפינים של בסיס-רכב) — מתקן אי-יישור של חלקים מיוחדים. רק יעד מגנטי. */
+function autoAssembleMagnetic(){
+  var snapped = 0;
+  // מצמידים רק חלקי-חיבור קטנים (גלגל/פין — מעט מחברים) אל עוגנים גדולים; הבסיס עצמו לא זז
+  parts.slice().forEach(function(p){
+    var nSnaps = (PD.parts[p.t].s || []).length;
+    if (isMag(p.t) && nSnaps <= 8 && connectSnap(p, 3.4, true)) snapped++;
+  });
+  if (snapped){ rebuildAll(); syncTop(); refreshSnapViz(); save(); }
+  return snapped;
+}
 /* מריץ "תוכנית בנייה" — JSON שמייצר LLM — ובונה את הדגם */
 function runBuildProgram(prog){
   if (typeof prog === 'string'){
@@ -2214,6 +2234,11 @@ function runBuildProgram(prog){
     list.push({ id: id++, t: t, x: x, z: z, l: l, q: (Array.isArray(p.q) && p.q.length === 4) ? p.q : null, c: p.color || p.c || (defColor(t) || '#c91a09') });
   });
   pushUndo(snapshot());
+  // כשהדגם מוכן (כולל הורדות-קטלוג אסינכרוניות) — הרץ הצמדה אוטומטית של חלקים מגנטיים
+  _onModelReady = function(){
+    var n = autoAssembleMagnetic();
+    if (n) toast('🔗 הוצמדו ' + n + ' חלקים מגנטית');
+  };
   setModel(list);
   save();
   toast('🤖 נבנה דגם AI · ' + list.length + ' חלקים' + (unresolved.length ? ' · ' + unresolved.length + ' לא זוהו' : ''));
@@ -2483,6 +2508,14 @@ window.__loadDims = function(id){
   return buildRemotePart(id, catalogName(id)).then(function(){ return window.__dims(id); }).catch(function(e){ return {id:id, err:String(e && e.message || e)}; });
 };
 window.__loadDimsMany = function(ids){ return Promise.all((ids||[]).map(function(id){ return window.__loadDims(id); })); };
+/* מציג את המחברים של החלקים על הלוח (סיכום לפי מין+רדיוס) — לאבחון הצמדה */
+window.__snapSummary = function(){
+  return parts.map(function(p){
+    var g = {};
+    worldSnaps(p).forEach(function(s){ var k = s.g + '@r' + Math.round(s.r); g[k] = (g[k]||0)+1; });
+    return { t:p.t, free:!!p.free, groups:g };
+  });
+};
 window.__selQ = function(){ return sel ? (sel.q || null) : null; };
 window.__selL = function(){ return sel ? sel.l : -1; };
 window.__selColor = function(){ return sel ? sel.c : ''; };
