@@ -218,6 +218,10 @@
   #aiProgram{min-height:88px;resize:vertical;direction:ltr;text-align:left;font-size:12px;}
   .aiSteps{display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.08);padding-top:9px;}
   .aiStepTtl{font-size:12px;font-weight:700;color:var(--accent);}
+  .aiAdv{border-top:1px solid rgba(255,255,255,.08);padding-top:8px;}
+  .aiAdv summary{cursor:pointer;font-size:12px;color:var(--muted);}
+  .aiAdv input{width:100%;box-sizing:border-box;border:0;border-radius:12px;background:var(--panel-soft);
+    color:var(--text);padding:10px 12px;font-family:inherit;font-size:13px;direction:ltr;text-align:left;margin:6px 0;}
   #aiPrompt:focus,#aiProgram:focus{outline:2px solid var(--accent);}
   .abtn.wide{width:100%;justify-content:center;}
   #aiPanel .searchBox,#accountPanel .searchBox,#upgradePanel .searchBox{display:flex;flex-direction:column;gap:9px;}
@@ -392,6 +396,12 @@
       <button class="abtn wide" id="btnAIRun">▶ הרץ תוכנית</button>
     </div>
     <div class="searchMeta" id="aiStatus"></div>
+    <details class="aiAdv">
+      <summary>⚙ חיבור שרת AI (מתקדם)</summary>
+      <div class="searchMeta">לאחר פריסת ה-Worker האישי, הדביקו את כתובתו כאן — ואז "בנה אוטומטית" יעבוד בלחיצה.</div>
+      <input id="aiEndpointInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off">
+      <button class="abtn wide" id="btnAISaveEndpoint">💾 שמור כתובת שרת</button>
+    </details>
   </div>
 </div>
 

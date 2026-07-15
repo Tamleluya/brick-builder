@@ -2257,9 +2257,27 @@ function aiPromptText(extra){
   if (extra) lines.push('', 'הנחיה נוספת מהמשתמש: ' + extra);
   return lines.join('\n');
 }
+/* סכימת JSON לאכיפת structured-output בשרת — המודל לא יכול להחזיר JSON לא-תקין */
+var BUILD_JSON_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    name: { type: 'string' },
+    parts: { type: 'array', items: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        type: { type: 'string' },
+        x: { type: 'integer' }, z: { type: 'integer' }, l: { type: 'integer' },
+        color: { type: 'string' }
+      },
+      required: ['type', 'x', 'z', 'l', 'color']
+    } }
+  },
+  required: ['name', 'parts']
+};
 window.BrickAPI = {
   build: runBuildProgram,
   aiPrompt: function(extra){ return aiPromptText(extra); },
+  jsonSchema: function(){ return BUILD_JSON_SCHEMA; },
   clear: function(){ pushUndo(snapshot()); setModel([]); save(); },
   parts: function(){ return parts.map(function(p){ return { type:p.t, name:(TYPES[p.t]||{}).n, x:p.x, z:p.z, l:p.l, color:p.c, free:!!p.free }; }); },
   snapshot: function(){ return snapshot(); },
@@ -2296,7 +2314,7 @@ function requestAiBuild(imageDataUrl, prompt){
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: imageDataUrl || null, prompt: prompt || '', palette: window.BrickAPI.palette(), schema: BUILD_SCHEMA_DOC, board: BOARD })
+    body: JSON.stringify({ image: imageDataUrl || null, prompt: aiPromptText(prompt), schema: BUILD_JSON_SCHEMA })
   }).then(function(r){ if (!r.ok) throw new Error('שגיאת שרת ' + r.status); return r.json(); })
     .then(function(j){ return j.program || j; });
 }
@@ -2310,7 +2328,15 @@ el('btnAI').addEventListener('click', function(){
   hidePanels();
   el('aiStatus').textContent = '';
   el('btnAIBuild').hidden = !aiEndpoint();   // כפתור בנייה-אוטומטית רק כשמחובר שרת
+  el('aiEndpointInput').value = aiEndpoint();
   el('aiPanel').hidden = false;
+});
+el('btnAISaveEndpoint').addEventListener('click', function(){
+  var v = el('aiEndpointInput').value.trim();
+  try { if (v) localStorage.setItem('bb-ai-endpoint', v); else localStorage.removeItem('bb-ai-endpoint'); } catch(e){}
+  el('btnAIBuild').hidden = !v;
+  el('aiStatus').textContent = v ? '✓ שרת מחובר — "בנה אוטומטית" פעיל' : 'הכתובת נמחקה';
+  toast(v ? '🔌 שרת AI חובר' : 'שרת AI נותק');
 });
 el('btnCloseAI').addEventListener('click', function(){ el('aiPanel').hidden = true; });
 el('aiImage').addEventListener('change', function(){
