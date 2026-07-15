@@ -1871,41 +1871,7 @@ document.getElementById('btnAddTop').addEventListener('click', openAdd);
 document.getElementById('btnCloseAdd').addEventListener('click', closeAdd);
 addPanel.addEventListener('click', function(e){ if (e.target === addPanel) closeAdd(); });
 
-/* ===== חלון קטן (מלמטה) — רשימת מספרים בלבד ===== */
-var addMini = document.getElementById('addMini');
-var miniInput = document.getElementById('miniInput');
-var miniList = document.getElementById('miniList');
-function miniRow(c){
-  var row = document.createElement('button'); row.className = 'miniRow';
-  var id = document.createElement('span'); id.className = 'mId'; id.textContent = c.id;
-  var dm = document.createElement('span'); dm.className = 'mDim'; dm.textContent = dimLabel(c.id) || '—';
-  var nm = document.createElement('span'); nm.className = 'mNm'; nm.textContent = c.n;
-  row.appendChild(id); row.appendChild(dm); row.appendChild(nm);
-  row.addEventListener('click', function(){
-    if (TYPES[c.id]){ armCatalogPart(c.id, c.n); closeMini(); return; }
-    row.classList.add('loading'); dm.textContent = '…';
-    armCatalogPart(c.id, c.n, function(ok){ if (ok) closeMini(); else { row.classList.remove('loading'); dm.textContent = dimLabel(c.id)||'—'; } });
-  });
-  return row;
-}
-function renderMini(list){
-  miniList.innerHTML = '';
-  if (!list.length){ var e = document.createElement('div'); e.className = 'addEmpty'; e.textContent = 'הקלידו שם/מידה/מספר'; miniList.appendChild(e); return; }
-  list.forEach(function(c){ miniList.appendChild(miniRow(c)); });
-}
-function openMini(){
-  addMini.hidden = false;
-  miniInput.value = '';
-  renderMini(addSearch('plate', 30));
-  miniInput.focus();
-}
-function closeMini(){ addMini.hidden = true; }
-miniInput.addEventListener('input', function(){
-  var raw = miniInput.value.trim();
-  renderMini(raw.length < 2 ? addSearch('plate', 30) : addSearch(raw, 50));
-});
-document.getElementById('btnAddBot').addEventListener('click', openMini);
-document.getElementById('btnCloseMini').addEventListener('click', closeMini);
+/* חלון-ההוספה התחתון + פס-הזום הוסרו — ההוספה בתפריט העליון, הזום במחוות/גלגלת. */
 
 /* ===== מדריך ויזואלי ===== */
 var helpPanel = document.getElementById('helpPanel');
@@ -1934,20 +1900,6 @@ helpPanel.addEventListener('click', function(e){ if (e.target === helpPanel) hel
   document.addEventListener('click', function(e){
     if (!moreMenu.hidden && !moreMenu.contains(e.target) && e.target !== btnMore) moreMenu.hidden = true;
   });
-})();
-
-/* ===== בקרת זום ===== */
-function zoomBy(f){ camR *= f; updateCamera(); }
-(function(){
-  var zi = document.getElementById('btnZoomIn'), zo = document.getElementById('btnZoomOut');
-  function hold(btn, f){
-    var iv = null;
-    function start(e){ e.preventDefault(); zoomBy(f); iv = setInterval(function(){ zoomBy(f); }, 90); }
-    function stop(){ if (iv){ clearInterval(iv); iv = null; } }
-    btn.addEventListener('pointerdown', start);
-    btn.addEventListener('pointerup', stop); btn.addEventListener('pointerleave', stop); btn.addEventListener('pointercancel', stop);
-  }
-  hold(zi, 0.9); hold(zo, 1.11);
 })();
 
 /* ---------- תצוגת נקודות חיבור (מנתוני ה-shadow האמיתיים) ---------- */
@@ -2428,7 +2380,8 @@ function makeDraggable(panel, handle, onStart){
   handle.addEventListener('pointercancel', end);
 }
 makeDraggable(document.getElementById('movePad'), document.getElementById('mvHead'));
-makeDraggable(document.getElementById('actions'), document.getElementById('actGrip'),
+// הסרגל הראשי — נגרר בלחיצה על כל שטח פנוי שלו (לא רק הידית), כדי שיהיה קל לתפוס
+makeDraggable(document.getElementById('actions'), document.getElementById('actions'),
   function(){ document.getElementById('actions').classList.add('dragged'); });
 /* הצמדה חזרה לרשת — מחזיר חלק "צף" למקום מסודר על הקוביות שמתחתיו */
 function snapSelToGrid(){

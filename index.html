@@ -141,8 +141,10 @@
   .mvSnap:active{background:var(--accent);color:var(--accent-ink);}
   .mvhub{cursor:pointer;}
   .mvhub:active{color:var(--accent);}
-  /* סרגל פעולות — ידית גרירה + כיווץ */
-  .actGrip{cursor:grab;align-self:center;}
+  /* סרגל פעולות — נגרר מכל שטח פנוי; ידית ברורה */
+  .actions{touch-action:none;cursor:grab;}
+  .actions:active{cursor:grabbing;}
+  .actGrip{cursor:grab;align-self:center;font-size:20px;padding:4px 6px;}
   .actMin{padding:9px 11px;}
   .actions.min{gap:4px;}
   .actions.min .abtn:not(.actMin){display:none;}
@@ -455,10 +457,6 @@
 
 <div class="moreMenu pill" id="moreMenu" hidden></div>
 
-<div class="zoomPad pill" id="zoomPad">
-  <button class="zbtn" id="btnZoomIn" title="התקרב">＋</button>
-  <button class="zbtn" id="btnZoomOut" title="התרחק">－</button>
-</div>
 
 <div class="movePanel pill" id="movePad" hidden>
   <div class="mvHead" id="mvHead">
@@ -490,7 +488,6 @@
   </div>
 </div>
 
-<button class="tbtn addBot" id="btnAddBot" title="הוסף חלק — רשימה מהירה">➕<small>הוסף</small></button>
 
 <div id="boxSel"></div>
 
@@ -711,14 +708,6 @@
     <div class="searchMeta" id="addMeta"></div>
     <div class="addGrid" id="addGrid"></div>
   </div>
-</div>
-
-<div class="addMini pill" id="addMini" hidden>
-  <div class="addMiniHead">
-    <input id="miniInput" type="search" placeholder="חיפוש מהיר לפי שם/מידה/מספר…" autocomplete="off">
-    <button class="tbtn" id="btnCloseMini">✕</button>
-  </div>
-  <div class="addMiniList" id="miniList"></div>
 </div>
 
 <div class="search" id="searchPanel" hidden>
