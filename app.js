@@ -475,7 +475,7 @@ function castAt(cx, cy, excludeId){
 var ptrs = new Map();
 var mode = 'idle';       // idle | maybe | orbit | drag | pinch
 var downX=0, downY=0, hitPart=null, dragSnap=null, dragOrig=null, dragGroup=null, dragPreferL=0;
-var autoPilot = (function(){ try { return localStorage.getItem('bb-autopilot') !== '0'; } catch(e){ return true; } })();  // ✈️ הצמדה-אוטומטית לגובה, ברירת-מחדל דלוק
+var autoPilot = true;   // גרירה תמיד מצמידה לגובה התמיכה (הצבה חופשית = שלט ההזזה)
 var pinch = null;
 
 function vibrate(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
@@ -774,15 +774,8 @@ canvas.addEventListener('pointermove', function(e){
 canvas.addEventListener('pointerleave', function(){ if (ghostMesh) ghostMesh.visible = false; });
 
 /* ---------- כפתורים ---------- */
-var _btnAuto = document.getElementById('btnAuto');
-function syncAuto(){ if (_btnAuto){ _btnAuto.classList.toggle('active', autoPilot); _btnAuto.style.opacity = autoPilot ? '1' : '0.45'; } }
-if (_btnAuto) _btnAuto.addEventListener('click', function(){
-  autoPilot = !autoPilot;
-  try { localStorage.setItem('bb-autopilot', autoPilot ? '1' : '0'); } catch(e){}
-  syncAuto();
-  toast(autoPilot ? '✈️ טייס אוטומטי דלוק — הקובייה נצמדת מעל מה שמתחתיה' : 'טייס אוטומטי כבוי — גובה חופשי');
-});
-syncAuto();
+/* טייס-אוטומטי הוסר כמתג — גרירה תמיד מצמידה את הקובייה על התמיכה שמתחתיה
+   (הצבה חופשית/מדויקת נעשית בשלט ההזזה). */
 document.getElementById('btnUndo').addEventListener('click', undo);
 document.getElementById('btnRedo').addEventListener('click', redo);
 /* מחיקה מיידית — הביטול (↩) מחזיר, אז אין צורך באישור */
@@ -1926,7 +1919,7 @@ helpPanel.addEventListener('click', function(e){ if (e.target === helpPanel) hel
   var LABELS = {
     btnAI:'בנה עם AI', btnAccount:'אזור אישי', btnUser:'החלפת משתמש',
     btnGallery:'הדגמים שלי', btnShare:'שיתוף בקישור', btnSearch:'חיפוש בקטלוג',
-    btnAuto:'טייס אוטומטי (הצמדה מעל)', btnPlay:'הנעת גלגלי שיניים'
+    btnPlay:'הנעת גלגלי שיניים'
   };
   Object.keys(LABELS).forEach(function(id){
     var b = document.getElementById(id); if (!b) return;
@@ -2373,29 +2366,70 @@ document.getElementById('btnPlay').addEventListener('click', function(){
 });
 /* ---------- שלט ניווט (נפתח אוטומטית בבחירת חלק) ---------- */
 var BRICKH = 6 * LU;                  // גובה לבנה 1×1 (3 פלטות)
-var stepFrac = 0.5;                   // צעד ההזזה — חלק מלבנה 1×1 (¼ ⅓ ½ 1)
-var movePadOn = false;               // השלט נפתח רק בלחיצה על "הזז"
-function padStep(){ return stepFrac * 1.0; }        // אופקי: חלק מרוחב בליטה
-function padVStep(){ return stepFrac * BRICKH; }    // אנכי: חלק מגובה לבנה (⅓ = פלטה)
+/* גודל הצעד נשמר כשבר מדויק של לבנה 1×1 (num/den) — כי ⅓/⅙ הם מרחקי-לגו אמיתיים
+   שאי-אפשר לבטא בשבר עשרוני נקי (פלטה = ⅓ לבנה). */
+var stepN = 1, stepD = 2;            // ברירת מחדל ½ לבנה
+var VLATTICE = BRICKH / 12;          // סריג אנכי עדין — כל השברים (½ ⅓ ¼ ⅙ 1/12) הם כפולות שלו
+var movePadOn = false;
+function stepFrac(){ return stepN / stepD; }
+function padStep(){ return stepFrac() * 1.0; }        // אופקי: חלק מרוחב בליטה
+function padVStep(){ return stepFrac() * BRICKH; }    // אנכי: חלק מגובה לבנה (⅓ = פלטה)
 function updateMovePad(){
   document.getElementById('movePad').hidden = !(movePadOn && selIds.length);
 }
-/* בורר גודל הצעד */
-Array.prototype.forEach.call(document.querySelectorAll('.mvStepBtn'), function(b){
+/* תפריט גודל-צעד שנפתח מתוך הג'ויסטיק (#2) */
+var _stepMenu = document.getElementById('mvStepMenu');
+document.getElementById('mvStepToggle').addEventListener('click', function(){ _stepMenu.hidden = !_stepMenu.hidden; });
+Array.prototype.forEach.call(document.querySelectorAll('.mvStepOpt'), function(b){
   b.addEventListener('click', function(){
-    stepFrac = parseFloat(b.dataset.frac);
-    Array.prototype.forEach.call(document.querySelectorAll('.mvStepBtn'), function(x){ x.classList.remove('on'); });
+    stepN = parseInt(b.dataset.num, 10); stepD = parseInt(b.dataset.den, 10);
+    Array.prototype.forEach.call(document.querySelectorAll('.mvStepOpt'), function(x){ x.classList.remove('on'); });
     b.classList.add('on');
+    document.getElementById('mvStepCur').textContent = b.textContent.split('—')[0].trim();
+    _stepMenu.hidden = true;   // אחרי ההגדרה אפשר להמשיך להזיז
   });
 });
-function closeMovePad(){ movePadOn = false; updateMovePad(); }
+function collapseActions(on){ document.getElementById('actions').classList.toggle('min', on); }
+function closeMovePad(){ movePadOn = false; updateMovePad(); collapseActions(false); _stepMenu.hidden = true; }
 document.querySelector('.mvhub').addEventListener('click', closeMovePad);
 document.getElementById('btnMoveClose').addEventListener('click', closeMovePad);
+document.getElementById('btnMoveMin').addEventListener('click', function(){ document.getElementById('movePad').classList.toggle('min'); });
 document.getElementById('btnMoveOpen').addEventListener('click', function(){
   if (!selIds.length){ toast('בחרו חלק תחילה'); return; }
   movePadOn = true; updateMovePad();
-  toast('✥ צעד הזזה: בחרו ¼/⅓/½/לבנה · ⊙ "הצמד לרשת" מיישר חזרה');
+  collapseActions(true);   // #3: מכווצים את הסרגל הראשי כדי שלא יעמיס
+  toast('✥ הזזה — קבעו גודל צעד (כולל ⅙/פלטה) · ⊙ "הצמד לרשת" מיישר · גררו את הכותרת להזזת השלט');
 });
+/* כיווץ הסרגל הראשי */
+document.getElementById('btnActMin').addEventListener('click', function(){ document.getElementById('actions').classList.toggle('min'); });
+
+/* ---------- גרירת תפריטים למיקום נוח (#4) ---------- */
+function makeDraggable(panel, handle, onStart){
+  var st = null;
+  handle.addEventListener('pointerdown', function(e){
+    if (e.target.closest('button')) return;    // כפתורים בתוך הידית פועלים כרגיל
+    var r = panel.getBoundingClientRect();
+    st = { x:e.clientX, y:e.clientY, left:r.left, top:r.top };
+    if (onStart) onStart();
+    panel.style.transform = 'none'; panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px';
+    try { handle.setPointerCapture(e.pointerId); } catch(err){}
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', function(e){
+    if (!st) return;
+    var nx = st.left + (e.clientX - st.x), ny = st.top + (e.clientY - st.y);
+    nx = Math.max(2, Math.min(window.innerWidth - panel.offsetWidth - 2, nx));
+    ny = Math.max(2, Math.min(window.innerHeight - panel.offsetHeight - 2, ny));
+    panel.style.left = nx + 'px'; panel.style.top = ny + 'px';
+  });
+  function end(){ st = null; }
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+makeDraggable(document.getElementById('movePad'), document.getElementById('mvHead'));
+makeDraggable(document.getElementById('actions'), document.getElementById('actGrip'),
+  function(){ document.getElementById('actions').classList.add('dragged'); });
 /* הצמדה חזרה לרשת — מחזיר חלק "צף" למקום מסודר על הקוביות שמתחתיו */
 function snapSelToGrid(){
   var ps = selParts(); if (!ps.length) return;
@@ -2431,6 +2465,7 @@ function moveSelBy(v){
     if (!p.free){ remOcc(p); p.free = true; p.pos = gridPos(p).toArray(); }
     p.pos[0] += v.x; p.pos[1] += v.y; p.pos[2] += v.z;
     if (p.pos[1] < 0) p.pos[1] = 0;   // לא יורדים מתחת ללוח
+    p.pos[1] = Math.round(p.pos[1] / VLATTICE) * VLATTICE;   // הצמדה לסריג 1/12-לבנה — שברים נוחתים מדויק
     placeMesh(p);
   });
 }
@@ -3191,6 +3226,7 @@ window.__selL = function(){ return sel ? sel.l : -1; };
 window.__selColor = function(){ return sel ? sel.c : ''; };
 window.__selCount = function(){ return selIds.length; };
 window.__board = function(){ return BOARD; };
+window.__partPosY=function(id){var p=parts.find(function(q){return q.id===id;});return p&&p.pos?p.pos[1]:null;};
 window.__spinNodes = function(){ return spinNodes ? spinNodes.length : 0; };
 window.__selFree = function(){ return sel ? !!sel.free : false; };
 window.__selectFirst = function(){ if (parts.length) selectPart(parts[parts.length-1]); return selIds.length; };

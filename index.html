@@ -114,26 +114,39 @@
   .galDel{position:absolute;top:5px;left:5px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(15,22,30,.72);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0;}
   .movePanel{
     position:fixed;top:50%;left:12px;transform:translateY(-50%);z-index:13;
-    padding:10px;display:flex;flex-direction:column;gap:8px;
+    padding:8px;display:flex;flex-direction:column;gap:8px;touch-action:none;
   }
   .movePanel[hidden]{display:none;}
-  .mvHead{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-  .mvTtl{font-size:12px;font-weight:700;color:var(--accent);}
-  .mvClose{border:0;background:var(--panel-soft);color:var(--text);border-radius:8px;width:24px;height:24px;font-size:12px;cursor:pointer;padding:0;}
-  .mvStep{display:flex;align-items:center;gap:4px;}
-  .mvStepLbl{font-size:10.5px;color:var(--muted);margin-inline-end:2px;}
-  .mvStepBtn{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
-    border-radius:8px;min-width:30px;height:28px;font-size:13px;font-family:inherit;padding:0 6px;}
-  .mvStepBtn.on{background:var(--accent);color:var(--accent-ink);font-weight:700;}
+  .dragGrip{color:var(--muted);font-size:14px;cursor:grab;letter-spacing:-1px;user-select:none;padding:0 2px;}
+  .mvHead{display:flex;align-items:center;gap:6px;cursor:grab;}
+  .mvHead:active{cursor:grabbing;}
+  .mvTtl{font-size:12px;font-weight:700;color:var(--accent);flex:1;}
+  .mvIcon{border:0;background:var(--panel-soft);color:var(--text);border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;padding:0;flex-shrink:0;}
+  .movePanel.min .mvBody{display:none;}
+  .mvBody{display:flex;flex-direction:column;gap:8px;}
+  .mvStepToggle{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:9px;padding:8px 10px;font-size:12px;font-family:inherit;text-align:center;}
+  .mvStepToggle b{color:var(--accent);}
+  .mvStepMenu{display:flex;flex-direction:column;gap:3px;background:rgba(0,0,0,.25);border-radius:9px;padding:4px;}
+  .mvStepMenu[hidden]{display:none;}
+  .mvStepOpt{border:0;cursor:pointer;background:transparent;color:var(--text);border-radius:7px;
+    padding:8px 10px;font-size:12.5px;font-family:inherit;text-align:right;}
+  .mvStepOpt.on{background:var(--accent);color:var(--accent-ink);font-weight:700;}
   .movepad{
     display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);
-    gap:5px;direction:ltr;
+    gap:5px;direction:ltr;align-self:center;
   }
   .mvSnap{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;padding:9px;font-size:12.5px;font-family:inherit;}
   .mvSnap:active{background:var(--accent);color:var(--accent-ink);}
   .mvhub{cursor:pointer;}
   .mvhub:active{color:var(--accent);}
+  /* סרגל פעולות — ידית גרירה + כיווץ */
+  .actGrip{cursor:grab;align-self:center;}
+  .actMin{padding:9px 11px;}
+  .actions.min{gap:4px;}
+  .actions.min .abtn:not(.actMin){display:none;}
+  .actions.dragged{right:auto!important;transform:none!important;}
   .mvb{
     border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
@@ -433,7 +446,6 @@
   <button class="tbtn" id="btnCam" title="מצב סיבוב מבט">🧭</button>
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
-  <button class="tbtn" id="btnAuto" title="טייס אוטומטי — הקובייה נצמדת מעל מה שמתחתיה בזמן גרירה">✈️</button>
   <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
@@ -449,27 +461,33 @@
 </div>
 
 <div class="movePanel pill" id="movePad" hidden>
-  <div class="mvHead">
-    <span class="mvTtl">הזזה עדינה</span>
-    <button class="mvClose" id="btnMoveClose" title="סגור">✕</button>
+  <div class="mvHead" id="mvHead">
+    <span class="dragGrip" aria-hidden="true">⠿</span>
+    <span class="mvTtl">הזזה</span>
+    <button class="mvIcon" id="btnMoveMin" title="כווץ/הרחב">▾</button>
+    <button class="mvIcon" id="btnMoveClose" title="סגור">✕</button>
   </div>
-  <div class="mvStep" id="mvStep">
-    <span class="mvStepLbl">צעד:</span>
-    <button class="mvStepBtn" data-frac="0.25">¼</button>
-    <button class="mvStepBtn" data-frac="0.33333">⅓</button>
-    <button class="mvStepBtn on" data-frac="0.5">½</button>
-    <button class="mvStepBtn" data-frac="1">לבנה</button>
+  <div class="mvBody">
+    <button class="mvStepToggle" id="mvStepToggle">צעד: <b id="mvStepCur">½ לבנה</b> ▾</button>
+    <div class="mvStepMenu" id="mvStepMenu" hidden>
+      <button class="mvStepOpt" data-num="1" data-den="1">לבנה שלמה</button>
+      <button class="mvStepOpt on" data-num="1" data-den="2">½ לבנה</button>
+      <button class="mvStepOpt" data-num="1" data-den="3">⅓ — פְּלָטָה</button>
+      <button class="mvStepOpt" data-num="1" data-den="4">¼ לבנה</button>
+      <button class="mvStepOpt" data-num="1" data-den="6">⅙ — חצי פלטה</button>
+      <button class="mvStepOpt" data-num="1" data-den="12">1/12 — רבע פלטה</button>
+    </div>
+    <div class="movepad">
+      <button class="mvb up" data-dir="up" aria-label="הגבה">⬆</button>
+      <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
+      <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
+      <span class="mvhub">✥</span>
+      <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
+      <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
+      <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
+    </div>
+    <button class="mvSnap" id="btnSnapGrid">⊙ הצמד לרשת</button>
   </div>
-  <div class="movepad">
-    <button class="mvb up" data-dir="up" aria-label="הגבה">⬆</button>
-    <button class="mvb" data-dir="fwd" aria-label="קדימה">▲</button>
-    <button class="mvb" data-dir="left" aria-label="שמאלה">◄</button>
-    <span class="mvhub">✥</span>
-    <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
-    <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
-    <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
-  </div>
-  <button class="mvSnap" id="btnSnapGrid">⊙ הצמד לרשת</button>
 </div>
 
 <button class="tbtn addBot" id="btnAddBot" title="הוסף חלק — רשימה מהירה">➕<small>הוסף</small></button>
@@ -499,6 +517,8 @@
 <div class="selCount pill" id="selCount"></div>
 
 <div class="actions pill" id="actions">
+  <span class="dragGrip actGrip" id="actGrip" aria-hidden="true" title="גררו להזזת התפריט">⠿</span>
+  <button class="abtn actMin" id="btnActMin" title="כווץ/הרחב">▾</button>
   <button class="abtn" id="btnMoveOpen" title="פתח שלט הזזה">✥ הזז</button>
   <button class="abtn" id="btnMulti" title="בחירה מרובה">➕ בחר עוד</button>
   <button class="abtn" id="btnUp" title="הרמה בגובה">⬆ הרם</button>
