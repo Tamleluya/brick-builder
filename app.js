@@ -2261,12 +2261,14 @@ function catalogSampler(){
   });
   return out.join('\n');
 }
+/* מצב יצירה: 'std' = חלקים סטנדרטיים בלבד · 'special' = כל הקטלוג (חלקים מיוחדים) */
+var aiMode = (function(){ try { return localStorage.getItem('bb-ai-mode') === 'special' ? 'special' : 'std'; } catch(e){ return 'std'; } })();
 /* בונה את הפקודה המלאה שנותנים ל-Claude יחד עם התמונה (סכימה + פלטה + הנחיות) */
-function aiPromptText(extra){
+function aiPromptText(extra, mode){
+  mode = mode || aiMode;
   var pal = window.BrickAPI.palette().map(function(p){
     return '  ' + p.id + '\t' + p.name + (p.teeth ? ' (' + p.teeth + ' שיניים)' : '') + (p.mag ? ' [מגנטי]' : '');
   }).join('\n');
-  var rich = catalogSampler();
   var catTotal = (typeof catalog !== 'undefined' && catalog.length) || 0;
   var lines = [
     'אתה מנוע בנייה לאפליקציית קוביות תואמות-לגו. מצורפת תמונה של דגם (או ערימת חלקים). שחזר דגם דומה ובנוי-היטב, והחזר JSON בלבד — בלי טקסט מסביב.',
@@ -2278,18 +2280,28 @@ function aiPromptText(extra){
     '',
     '"type" = מספר חלק LDraw, או שם חלק בעברית/אנגלית ("לבנה 2×4", "wheel", "door").',
     '',
-    'חלקי ברירת-מחדל (מהירים, מומלצים לגוף הדגם) — מזהה⇥שם:',
-    pal,
-    '',
-    'קטלוג מלא: ' + catTotal.toLocaleString() + ' חלקי LDraw נוספים זמינים. אתה יכול לנקוב בכל מזהה LDraw חוקי (למשל 12622 = בסיס-רכב עם כנפיים, 13252 = שמשה, 3040b = רעף) והחלק יורד אוטומטית. השתמש בהם לחלקים ייחודיים/מפורטים שמשדרגים את הדגם. דוגמית מייצגת:',
-    rich,
+    'חלקים זמינים (מזהה⇥שם):',
+    pal
+  ];
+  if (mode === 'special'){
+    lines.push(
+      '',
+      '── מצב "חלקים מיוחדים" ──',
+      'בנוסף לחלקים שלמעלה, יש ' + catTotal.toLocaleString() + ' חלקי LDraw בקטלוג. אתה יכול לנקוב בכל מזהה LDraw חוקי והחלק יורד אוטומטית.',
+      'העדף חלקים מעוגלים/משופעים לדגם חלק ומודרני (לא בלוקי): 12622=בסיס-רכב עם כנפיים · 18729/13252=שמשות מעוקלות · 11290/15625/24309=משופעות מעוגלות · arch/cone. דוגמית:',
+      catalogSampler()
+    );
+  }
+  lines.push(
     '',
     'הנחיות:',
     '- זהה צורה, צבעים, גדלים ומיקום מהתמונה; שחזר דגם מזוהה וניתן לבנייה.',
     '- הנח חלקים בשכבות הגיוניות כך שיישבו זה על זה (הימנע מריחוף).',
-    '- בנה את הגוף מחלקי ברירת-המחדל, ושבץ חלקי-קטלוג מפורטים (שמשות, כנפיים, משופעות מעוגלות, קשתות) היכן שהם משפרים ריאליזם.',
+    (mode === 'special'
+      ? '- שאף למראה חלק ומודרני: השתמש במשופעות-מעוגלות/שמשות/כנפיים במקום פינות מרובעות.'
+      : '- השתמש אך ורק בחלקים שברשימה למעלה (מצב סטנדרטי).'),
     '- החזר JSON תקין בלבד.'
-  ];
+  );
   if (extra) lines.push('', 'הנחיה נוספת מהמשתמש: ' + extra);
   return lines.join('\n');
 }
@@ -2365,8 +2377,27 @@ el('btnAI').addEventListener('click', function(){
   el('aiStatus').textContent = '';
   el('btnAIBuild').hidden = !aiEndpoint();   // כפתור בנייה-אוטומטית רק כשמחובר שרת
   el('aiEndpointInput').value = aiEndpoint();
+  syncAiMode();
   el('aiPanel').hidden = false;
 });
+/* מצב יצירה: סטנדרטי (חינם) מול מיוחד/כל-הקטלוג (פרו) */
+function syncAiMode(){
+  var std = el('aiModeStd'), sp = el('aiModeSpecial'), hint = el('aiModeHint');
+  if (!std || !sp) return;
+  std.classList.toggle('is-on', aiMode === 'std');
+  sp.classList.toggle('is-on', aiMode === 'special');
+  if (hint) hint.textContent = aiMode === 'special'
+    ? 'חלקים מיוחדים — כל הקטלוג (10K+), מראה חלק ומודרני.'
+    : 'חלקים סטנדרטיים — מהיר ויציב, מראה קלאסי.';
+}
+function setAiMode(m){
+  if (m === 'special' && !isPro()){ openUpgrade('בנייה עם חלקים מיוחדים זמינה במנוי פרו'); return; }
+  aiMode = m === 'special' ? 'special' : 'std';
+  try { localStorage.setItem('bb-ai-mode', aiMode); } catch(e){}
+  syncAiMode();
+}
+el('aiModeStd').addEventListener('click', function(){ setAiMode('std'); });
+el('aiModeSpecial').addEventListener('click', function(){ setAiMode('special'); });
 el('btnAISaveEndpoint').addEventListener('click', function(){
   var v = el('aiEndpointInput').value.trim();
   try { if (v) localStorage.setItem('bb-ai-endpoint', v); else localStorage.removeItem('bb-ai-endpoint'); } catch(e){}
@@ -2445,6 +2476,13 @@ window.__buildTest = function(){
   return { placed: res.placed, unresolved: res.unresolved, partCount: parts.length };
 };
 window.__partCount = function(){ return parts.length; };
+/* אורקל-מידות: מחזיר את טביעת-הרגל האמיתית של חלק (טעון או מהקטלוג) — בסיס לשיבוץ מדויק של חלקים מיוחדים */
+window.__dims = function(id){ var p = PD.parts[id]; return p ? {id:id, n:p.n, w:p.w, d:p.d, h:p.h, mag:!!p.mag, cat:p.cat, snaps:(p.s||[]).length} : null; };
+window.__loadDims = function(id){
+  if (PD.parts[id]) return Promise.resolve(window.__dims(id));
+  return buildRemotePart(id, catalogName(id)).then(function(){ return window.__dims(id); }).catch(function(e){ return {id:id, err:String(e && e.message || e)}; });
+};
+window.__loadDimsMany = function(ids){ return Promise.all((ids||[]).map(function(id){ return window.__loadDims(id); })); };
 window.__selQ = function(){ return sel ? (sel.q || null) : null; };
 window.__selL = function(){ return sel ? sel.l : -1; };
 window.__selColor = function(){ return sel ? sel.c : ''; };

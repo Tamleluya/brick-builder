@@ -213,6 +213,12 @@
     border:1px dashed rgba(255,255,255,.22);border-radius:12px;padding:14px;color:var(--muted);
     font-size:13px;background:var(--panel-soft);}
   #aiPreview{max-width:100%;max-height:150px;border-radius:10px;object-fit:contain;align-self:center;}
+  .aiMode{display:flex;gap:8px;}
+  .aiModeBtn{flex:1;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:10px 8px;cursor:pointer;
+    background:var(--panel-soft);color:var(--muted);font-family:inherit;font-size:13px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;gap:6px;transition:.15s;}
+  .aiModeBtn.is-on{border-color:var(--accent);color:var(--text);background:rgba(255,255,255,.06);box-shadow:0 0 0 1px var(--accent) inset;}
+  .aiModeBtn .proTag{font-size:10px;font-weight:800;color:#ffd257;background:rgba(255,210,87,.14);border-radius:6px;padding:1px 5px;}
   #aiPrompt,#aiProgram{width:100%;box-sizing:border-box;border:0;border-radius:12px;
     background:var(--panel-soft);color:var(--text);padding:11px 13px;font-family:inherit;font-size:14px;}
   #aiProgram{min-height:88px;resize:vertical;direction:ltr;text-align:left;font-size:12px;}
@@ -384,6 +390,11 @@
       <span id="aiFileLabel">📷 צלמו או בחרו תמונה</span>
     </label>
     <img id="aiPreview" alt="" hidden>
+    <div class="aiMode" id="aiModeSel">
+      <button class="aiModeBtn is-on" id="aiModeStd" data-mode="std">🧱 סטנדרטי</button>
+      <button class="aiModeBtn" id="aiModeSpecial" data-mode="special">✨ מיוחד <span class="proTag">פרו</span></button>
+    </div>
+    <div class="searchMeta" id="aiModeHint">חלקים סטנדרטיים — מהיר ויציב, מראה קלאסי.</div>
     <input id="aiPrompt" type="text" placeholder="הנחיה (רשות) — למשל: מכונית אדומה עם 4 גלגלים" autocomplete="off">
     <button class="abtn wide" id="btnAIBuild" hidden>✨ בנה אוטומטית</button>
 
