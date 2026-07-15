@@ -2379,9 +2379,38 @@ function genCarProgram(opts){
   out.forEach(function(p){ p.x = Math.max(0, Math.min(BOARD-1, p.x+ox)); p.z = Math.max(0, Math.min(BOARD-1, p.z+oz)); });
   return { name: 'קופה אלגנטית · ' + out.length + ' חלקים', parts: out };
 }
+/* תבנית: קוטג' לבן עם גג משופע, ארובה, חלונות ועץ. */
+function genHouseProgram(){
+  var WALL='#eceae0', WALL2='#d8d6cc', ROOF='#4a4e55', ROOF2='#3a3d43', DOOR='#6b4423', GLASS='#bcd4e6', SHUT='#16181c', TAN='#c9b48a', CHIM='#8a1f14', GRASS='#2f8f46';
+  var P=[]; function add(t,x,z,l,c){ P.push({type:t,x:x,z:z,l:l,color:c}); }
+  for (var x=8;x<=22;x+=2) for (var z=10;z<=20;z+=2) add('3020',x,z,0,TAN);
+  function isWall(x,z){ return x===8||x===22||z===10||z===20; }
+  for (var l=2;l<14;l+=6) for (x=8;x<=22;x+=1) for (z=10;z<=20;z+=1){
+    if (!isWall(x,z)) continue;
+    if (x===22 && z>=14 && z<=15 && l<8) continue;
+    if (l>=8){ if ((x===22||x===8)&&(z===12||z===18)) continue; if ((z===10||z===20)&&(x===12||x===18)) continue; }
+    add(l<8?'3005':'3004', x, z, l, l<8?WALL:WALL2);
+  }
+  [[22,12],[22,18],[8,12],[8,18],[12,10],[18,10],[12,20],[18,20]].forEach(function(w){ add('3062b',w[0],w[1],10,GLASS); });
+  [[22,11],[22,13],[22,17],[22,19]].forEach(function(w){ add('3005',w[0],w[1],8,SHUT); });
+  add('3004',22,14,2,DOOR); add('3004',22,14,5,DOOR);
+  var rh={10:14,11:16,12:18,13:20,14:22,15:24,16:22,17:20,18:18,19:16,20:14};
+  for (x=8;x<=22;x+=1) for (z=10;z<=20;z+=1) add('3024',x,z,rh[z],(z===15)?ROOF2:ROOF);
+  for (z=10;z<=20;z+=1){ add('3024',23,z,rh[z],ROOF2); add('3024',7,z,rh[z],ROOF2); }
+  for (z=11;z<=19;z+=1){ for (l=14;l<rh[z];l+=2) add('3024',22,z,l,WALL); }
+  for (l=14;l<=26;l+=2) add('3062b',10,12,l,CHIM);
+  for (l=2;l<=8;l+=2) add('3062b',12,24,l,DOOR);
+  [[0,0],[2,0],[-2,0],[0,2],[0,-2]].forEach(function(d){ add('3062b',12+d[0],24+d[1],10,GRASS); });
+  add('3062b',12,24,12,GRASS);
+  for (z=13;z<=16;z+=1) add('3024',23,z,2,TAN);
+  var ox = Math.round(BOARD/2)-15, oz = Math.round(BOARD/2)-15;
+  P.forEach(function(p){ p.x=Math.max(0,Math.min(BOARD-1,p.x+ox)); p.z=Math.max(0,Math.min(BOARD-1,p.z+oz)); });
+  return { name: "קוטג' לבן · " + P.length + ' חלקים', parts: P };
+}
 window.BrickAPI = {
   build: runBuildProgram,
   buildCar: function(opts){ var prog = genCarProgram(typeof opts === 'string' ? {color:opts} : opts); var r = runBuildProgram(prog); setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 400); return { parts: prog.parts.length, placed: r.placed }; },
+  buildHouse: function(){ var prog = genHouseProgram(); var r = runBuildProgram(prog); setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 500); return { parts: prog.parts.length, placed: r.placed }; },
   carProgram: genCarProgram,
   aiPrompt: function(extra){ return aiPromptText(extra); },
   jsonSchema: function(){ return BUILD_JSON_SCHEMA; },
@@ -2457,12 +2486,19 @@ function setAiMode(m){
 }
 el('aiModeStd').addEventListener('click', function(){ setAiMode('std'); });
 el('aiModeSpecial').addEventListener('click', function(){ setAiMode('special'); });
-/* מחולל מכוניות — קופה אלגנטית בצבע נבחר */
+/* תבניות מוכנות — מכונית / בית */
 el('btnBuildCar').addEventListener('click', function(){
   var color = el('carColor').value;
   el('aiStatus').textContent = '🚗 בונה מכונית…';
   setTimeout(function(){
     try { var r = window.BrickAPI.buildCar({ color: color }); el('aiPanel').hidden = true; toast('🚗 נבנתה קופה אלגנטית · ' + r.placed + ' חלקים'); }
+    catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
+  }, 30);
+});
+el('btnBuildHouse').addEventListener('click', function(){
+  el('aiStatus').textContent = "🏠 בונה קוטג'…";
+  setTimeout(function(){
+    try { var r = window.BrickAPI.buildHouse(); el('aiPanel').hidden = true; toast("🏠 נבנה קוטג' · " + r.placed + ' חלקים'); }
     catch(e){ el('aiStatus').textContent = 'שגיאה: ' + e.message; }
   }, 30);
 });

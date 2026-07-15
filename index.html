@@ -221,6 +221,8 @@
   .aiModeBtn .proTag{font-size:10px;font-weight:800;color:#ffd257;background:rgba(255,210,87,.14);border-radius:6px;padding:1px 5px;}
   .carGen{display:flex;flex-direction:column;gap:7px;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:11px;background:var(--panel-soft);}
   .carSel{width:100%;box-sizing:border-box;border:0;border-radius:12px;background:var(--panel-soft);color:var(--text);padding:11px 13px;font-family:inherit;font-size:14px;cursor:pointer;}
+  .tplRow{display:flex;gap:8px;}
+  .tplRow .abtn{flex:1;justify-content:center;}
   #aiPrompt,#aiProgram{width:100%;box-sizing:border-box;border:0;border-radius:12px;
     background:var(--panel-soft);color:var(--text);padding:11px 13px;font-family:inherit;font-size:14px;}
   #aiProgram{min-height:88px;resize:vertical;direction:ltr;text-align:left;font-size:12px;}
@@ -398,12 +400,15 @@
     </div>
     <div class="searchMeta" id="aiModeHint">חלקים סטנדרטיים — מהיר ויציב, מראה קלאסי.</div>
     <div class="carGen">
-      <div class="aiStepTtl">🚗 בנו מכונית ספורט אלגנטית</div>
+      <div class="aiStepTtl">🧱 תבניות מוכנות</div>
       <select id="carColor" class="carSel">
         <option>אדום</option><option>כחול</option><option>שחור</option>
         <option>כסף</option><option>ירוק</option><option>צהוב</option>
       </select>
-      <button class="abtn wide" id="btnBuildCar">🚗 בנה מכונית</button>
+      <div class="tplRow">
+        <button class="abtn" id="btnBuildCar">🚗 מכונית ספורט</button>
+        <button class="abtn" id="btnBuildHouse">🏠 קוטג'</button>
+      </div>
     </div>
     <input id="aiPrompt" type="text" placeholder="הנחיה (רשות) — למשל: מכונית אדומה עם 4 גלגלים" autocomplete="off">
     <button class="abtn wide" id="btnAIBuild" hidden>✨ בנה אוטומטית</button>
