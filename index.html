@@ -286,6 +286,13 @@
   .mvb[data-dir="down"]{grid-area:3/1}
   .mvb.up,.mvb.down{color:var(--accent);font-size:16px;font-weight:700;}
 
+  /* מדריך ויזואלי */
+  .helpList{display:flex;flex-direction:column;gap:4px;max-height:64vh;overflow-y:auto;}
+  .helpRow{display:flex;gap:12px;align-items:flex-start;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,.06);}
+  .helpRow .hIco{font-size:24px;line-height:1.2;width:32px;text-align:center;flex-shrink:0;}
+  .helpRow b{font-size:14px;display:block;margin-bottom:2px;}
+  .helpRow span{font-size:12.5px;color:var(--muted);line-height:1.5;}
+
   /* תפריט פעולות צמוד-לחלק (נפתח בהקשה/לחיצה-ארוכה על חלק) */
   .partMenu{position:fixed;z-index:14;padding:8px;max-width:250px;
     box-shadow:0 10px 34px rgba(0,0,0,.5);animation:pmIn .13s ease-out;}
@@ -372,6 +379,7 @@
   <div class="stats pill"><span><b id="stN">0</b> חלקים</span><span>FPS <b id="stF">–</b></span></div>
   <div class="spacer"></div>
   <button class="tbtn" id="btnAI" title="בנה עם AI">🤖</button>
+  <button class="tbtn" id="btnHelp" title="איך בונים? מדריך קצר">❓</button>
   <button class="tbtn wide" id="btnAddTop" title="הוסף חלק — חלון גדול עם תמונות">➕ חלק</button>
   <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
   <button class="tbtn wide" id="btnUser" title="החלפת משתמש">👤</button>
@@ -572,6 +580,24 @@
     </div>
     <button class="abtn wide" id="btnDoUpgrade">⭐ הפעל פרו</button>
     <div class="searchMeta">בגרסת האב-טיפוס ההפעלה מיידית ומקומית. תשלום אמיתי יתווסף עם השרת.</div>
+  </div>
+</div>
+
+<div class="search" id="helpPanel" hidden>
+  <div class="searchBox pill">
+    <div class="searchHead">
+      <b class="galTitle">❓ איך בונים?</b>
+      <button class="tbtn" id="btnCloseHelp">✕</button>
+    </div>
+    <div class="helpList">
+      <div class="helpRow"><span class="hIco">➕</span><div><b>מוסיפים חלק</b><span>לחצו "➕ חלק" למעלה (חלון עם תמונות) או ➕ למטה (רשימה מהירה). בחרו חלק — ותראו תצוגה מקדימה.</span></div></div>
+      <div class="helpRow"><span class="hIco">👻</span><div><b>מניחים על הלוח</b><span>אחרי שבחרתם חלק, מופיעה "רוח־רפאים" שקופה. הזיזו אותה למקום — והקישו כדי להניח.</span></div></div>
+      <div class="helpRow"><span class="hIco">👆</span><div><b>עורכים חלק</b><span>הקישו (או לחיצה ארוכה בסמארטפון) על חלק — נפתח תפריט צמוד: הזז, שכפל, צבע, סובב, הגבה/הנמך, מחק.</span></div></div>
+      <div class="helpRow"><span class="hIco">✥</span><div><b>מזיזים לכל כיוון</b><span>בבחירת חלק נפתחים חצים (למעלה משמאל) — כולל ⬆/⬇ להגבהה והנמכה, כדי להניח קובייה על גבי קובייה.</span></div></div>
+      <div class="helpRow"><span class="hIco">🔒</span><div><b>נועלים את המבט</b><span>🧭 נועל את סיבוב המבט לבנייה עדינה. כשהוא אדום ומהבהב — הקישו עליו כדי לשחרר.</span></div></div>
+      <div class="helpRow"><span class="hIco">↩</span><div><b>הקודם / הבא</b><span>↩ מבטל את הפעולה האחרונה, ↪ מחזיר. עובד תמיד, גם אחרי רענון הדף.</span></div></div>
+      <div class="helpRow"><span class="hIco">✈️</span><div><b>טייס אוטומטי</b><span>כשדלוק — קובייה שגוררים נצמדת אוטומטית מעל מה שמתחתיה, בלי תלות בזווית המבט.</span></div></div>
+    </div>
   </div>
 </div>
 

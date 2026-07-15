@@ -1914,6 +1914,12 @@ miniInput.addEventListener('input', function(){
 document.getElementById('btnAddBot').addEventListener('click', openMini);
 document.getElementById('btnCloseMini').addEventListener('click', closeMini);
 
+/* ===== מדריך ויזואלי ===== */
+var helpPanel = document.getElementById('helpPanel');
+document.getElementById('btnHelp').addEventListener('click', function(){ helpPanel.hidden = false; });
+document.getElementById('btnCloseHelp').addEventListener('click', function(){ helpPanel.hidden = true; });
+helpPanel.addEventListener('click', function(e){ if (e.target === helpPanel) helpPanel.hidden = true; });
+
 /* ---------- תצוגת נקודות חיבור (מנתוני ה-shadow האמיתיים) ---------- */
 var snapViz = false;
 var snapGroup = new THREE.Group();
