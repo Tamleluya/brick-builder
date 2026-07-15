@@ -290,7 +290,22 @@
   .addCard{position:relative;border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:12px;padding:8px 6px 7px;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:inherit;}
   .addCard:active{transform:scale(.96);}
-  .addIco{width:62px;height:52px;image-rendering:auto;}
+  .addCard.cur{outline:2px solid var(--accent);}
+  .addIco{width:64px;height:56px;object-fit:contain;}
+
+  /* תצוגה מקדימה תלת-מימד בראש החלון הגדול */
+  .addPreview{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:14px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);}
+  .addPreview[hidden]{display:none;}
+  .addPvImg{width:96px;height:84px;object-fit:contain;flex-shrink:0;
+    background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.10),transparent 70%);border-radius:12px;}
+  .addPvInfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .addPvInfo b{font-size:15px;}
+  .addPvInfo .pvDim{font-size:14px;font-weight:800;color:var(--accent);direction:ltr;}
+  .addPvInfo .pvId{font-size:11px;color:var(--muted);direction:ltr;}
+  .addPvGo{border:0;cursor:pointer;background:var(--accent);color:var(--accent-ink);
+    border-radius:12px;padding:11px 14px;font-size:13.5px;font-weight:800;font-family:inherit;flex-shrink:0;}
+  .addPvGo:active{transform:scale(.95);}
   .addNm{font-size:11.5px;text-align:center;line-height:1.25;max-height:2.5em;overflow:hidden;}
   .addDim{font-size:11px;font-weight:700;color:var(--accent);direction:ltr;font-variant-numeric:tabular-nums;}
   .addId{font-size:9.5px;color:var(--muted);direction:ltr;}
@@ -527,6 +542,15 @@
     </div>
     <div class="searchHead">
       <input id="addInput" type="search" placeholder="שם, מידה (2x4) או מספר — למשל: לבנה, גלגל, 3001" autocomplete="off">
+    </div>
+    <div class="addPreview" id="addPreview" hidden>
+      <img id="addPvImg" class="addPvImg" alt="">
+      <div class="addPvInfo">
+        <b id="addPvName"></b>
+        <span class="pvDim" id="addPvDim"></span>
+        <span class="pvId" id="addPvId"></span>
+      </div>
+      <button class="addPvGo" id="addPvGo">➕ הוסף</button>
     </div>
     <div class="searchChips" id="addChips"></div>
     <div class="searchMeta" id="addMeta"></div>

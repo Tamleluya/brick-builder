@@ -336,23 +336,42 @@ function toggleSelect(p){
 /* ---------- undo/redo / שמירה לפי משתמש ---------- */
 function snapshot(){ return JSON.stringify(parts); }
 var redoStack = [];
+/* היסטוריית "הקודם/הבא" נשמרת לכל משתמש — כדי שתמיד תעבוד, גם אחרי רענון הדף */
+function undoKey(n){ return 'bb-undo-' + n; }
+var _histT = null;
+function persistHistory(){
+  if (!curUser) return;
+  clearTimeout(_histT);
+  _histT = setTimeout(function(){
+    try { localStorage.setItem(undoKey(curUser), JSON.stringify({ u: undoStack.slice(-25), r: redoStack.slice(-25) })); } catch(e){}
+  }, 350);
+}
+function loadHistory(){
+  try {
+    var s = curUser && localStorage.getItem(undoKey(curUser));
+    if (s){ var o = JSON.parse(s); undoStack = Array.isArray(o.u) ? o.u : []; redoStack = Array.isArray(o.r) ? o.r : []; syncTop(); return; }
+  } catch(e){}
+  undoStack = []; redoStack = []; syncTop();
+}
 function pushUndo(snap){
   undoStack.push(snap);
   if (undoStack.length > 60) undoStack.shift();
   redoStack = [];
-  syncTop();
+  syncTop(); persistHistory();
 }
 function undo(){
-  if (!undoStack.length) return;
+  if (!undoStack.length){ toast('אין עוד צעד להחזיר'); return; }
   selectPart(null);
   redoStack.push(snapshot());
   applySnap(undoStack.pop());
+  persistHistory();
 }
 function redo(){
-  if (!redoStack.length) return;
+  if (!redoStack.length){ toast('אין עוד צעד קדימה'); return; }
   selectPart(null);
   undoStack.push(snapshot());
   applySnap(redoStack.pop());
+  persistHistory();
 }
 function applySnap(s){
   parts = JSON.parse(s);
@@ -1498,36 +1517,60 @@ var FAM_COL = {brick:'#c91a09',plate:'#0055bf',tile:'#a0a5a9',slope:'#237841',we
   door:'#8a5a2b',window:'#7ec0e8',glass:'#7ec0e8',windscreen:'#7ec0e8',arch:'#c91a09',
   cone:'#f2cd37',dish:'#a0a5a9',wing:'#0055bf',baseplate:'#237841',bracket:'#a0a5a9',
   panel:'#a0a5a9',round:'#f2cd37',beam:'#f2cd37',liftarm:'#f2cd37',technic:'#616365'};
-/* ציור תמונת חלק — פלטת בליטות לפי w×d בצבע המשפחה */
-function drawStudIcon(cv, id, size){
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = size * dpr; cv.height = Math.round(size * 0.82) * dpr;
-  var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  var W = size, H = size * 0.82;
-  var dim = partDims(id) || {w:2, d:2, h:1};
-  var cols = Math.max(1, Math.min(dim.w || 2, 8));
-  var rows = Math.max(1, Math.min(dim.d || 2, 8));
-  var col = FAM_COL[partFamily(id)] || '#8a94a0';
-  var pad = 6, gap = 2;
-  var cell = Math.min((W - pad*2) / cols, (H - pad*2) / rows, 15);
-  var bw = cell*cols + gap*(cols-1), bh = cell*rows + gap*(rows-1);
-  var ox = (W - bw)/2, oy = (H - bh)/2;
-  // גוף הפלטה
-  ctx.fillStyle = col;
-  var r = 4;
-  ctx.beginPath();
-  ctx.moveTo(ox-3+r, oy-3); ctx.arcTo(ox+bw+3, oy-3, ox+bw+3, oy+bh+3, r);
-  ctx.arcTo(ox+bw+3, oy+bh+3, ox-3, oy+bh+3, r); ctx.arcTo(ox-3, oy+bh+3, ox-3, oy-3, r);
-  ctx.arcTo(ox-3, oy-3, ox+bw+3, oy-3, r); ctx.fill();
-  // בליטות
-  for (var i=0;i<cols;i++) for (var j=0;j<rows;j++){
-    var cx = ox + i*(cell+gap) + cell/2, cy = oy + j*(cell+gap) + cell/2;
-    ctx.beginPath(); ctx.arc(cx, cy, cell*0.32, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, cell*0.26, 0, Math.PI*2);
-    ctx.fillStyle = col; ctx.fill();
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.stroke();
+/* תמונת חלק תלת-מימד: מרנדר לבנה/פלטה פרמטרית (גוף + בליטות) במבט איזומטרי */
+var _thumbR = null, _thumbScene = null, _thumbCam = null, thumbCache = {};
+function thumbRenderer(){
+  if (_thumbR) return _thumbR;
+  var cv = document.createElement('canvas');
+  _thumbR = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:true, preserveDrawingBuffer:true });
+  _thumbR.setPixelRatio(2); _thumbR.setSize(140, 120, false);
+  _thumbR.outputEncoding = THREE.sRGBEncoding;
+  _thumbScene = new THREE.Scene();
+  var dl = new THREE.DirectionalLight(0xffffff, 1.15); dl.position.set(4, 9, 6); _thumbScene.add(dl);
+  var dl2 = new THREE.DirectionalLight(0xffffff, 0.4); dl2.position.set(-5, 3, -4); _thumbScene.add(dl2);
+  _thumbScene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  _thumbCam = new THREE.PerspectiveCamera(27, 140/120, 0.1, 100);
+  return _thumbR;
+}
+function buildBrickMesh(dim, colHex){
+  var w = Math.max(1, Math.min(dim.w || 2, 10));
+  var d = Math.max(1, Math.min(dim.d || 2, 10));
+  var bh = Math.max(0.34, (dim.h || 1) * 0.32);   // פלטה נמוכה, לבנה גבוהה
+  var mat = new THREE.MeshStandardMaterial({ color:new THREE.Color(colHex), roughness:0.5, metalness:0.02 });
+  var g = new THREE.Group();
+  var body = new THREE.Mesh(new THREE.BoxGeometry(w, bh, d), mat);
+  body.position.y = bh/2; g.add(body);
+  var studG = new THREE.CylinderGeometry(0.31, 0.31, 0.2, 20);
+  for (var i=0;i<w;i++) for (var j=0;j<d;j++){
+    var s = new THREE.Mesh(studG, mat);
+    s.position.set(-w/2 + 0.5 + i, bh + 0.1, -d/2 + 0.5 + j);
+    g.add(s);
   }
+  g.userData.disp = [body.geometry, studG, mat];
+  return { group:g, w:w, d:d, h:bh };
+}
+function partThumb(id){
+  var dim = partDims(id) || { w:2, d:2, h:1 };
+  var col = FAM_COL[partFamily(id)] || '#8a94a0';
+  var key = (dim.w||2) + 'x' + (dim.d||2) + 'x' + (dim.h||1) + col;
+  if (thumbCache[key]) return thumbCache[key];
+  try {
+    thumbRenderer();
+    var bm = buildBrickMesh(dim, col);
+    _thumbScene.add(bm.group);
+    var size = Math.max(bm.w, bm.d, bm.h * 1.5);
+    var dist = size * 2.0 + 2.2;
+    var dir = new THREE.Vector3(0.82, 0.72, 1).normalize();
+    _thumbCam.position.copy(dir.multiplyScalar(dist));
+    _thumbCam.position.y += bm.h * 0.4;
+    _thumbCam.lookAt(0, bm.h/2, 0);
+    _thumbR.render(_thumbScene, _thumbCam);
+    var url = _thumbR.domElement.toDataURL('image/png');
+    _thumbScene.remove(bm.group);
+    bm.group.userData.disp.forEach(function(o){ if (o && o.dispose) o.dispose(); });
+    thumbCache[key] = url;
+    return url;
+  } catch(e){ return ''; }
 }
 /* חלקים "דומים" — אותה משפחה + מידות קרובות + שיתוף מילים */
 function similarParts(refId, limit){
@@ -1583,11 +1626,18 @@ var addGrid = document.getElementById('addGrid');
 var addInput = document.getElementById('addInput');
 var addMeta = document.getElementById('addMeta');
 var addChips = document.getElementById('addChips');
+function placeFromAdd(c, doneEl){
+  if (TYPES[c.id]){ armCatalogPart(c.id, c.n); closeAdd(); return; }
+  if (doneEl) doneEl.classList.add('loading');
+  armCatalogPart(c.id, c.n, function(ok){
+    if (ok){ closeAdd(); }
+    else { if (doneEl) doneEl.classList.remove('loading'); addMeta.textContent = 'ההורדה נכשלה — נסו בגרסת האתר'; }
+  });
+}
 function addCard(c){
   var card = document.createElement('button');
   card.className = 'addCard';
-  var cv = document.createElement('canvas'); cv.className = 'addIco';
-  drawStudIcon(cv, c.id, 62);
+  var im = document.createElement('img'); im.className = 'addIco'; im.alt = ''; im.src = partThumb(c.id);
   var nm = document.createElement('span'); nm.className = 'addNm'; nm.textContent = heGloss(c.n) || c.n;
   var dl = dimLabel(c.id);
   var dm = document.createElement('span'); dm.className = 'addDim'; dm.textContent = dl || '—';
@@ -1599,17 +1649,27 @@ function addCard(c){
     renderAddGrid(similarParts(c.id, 48));
     addInput.value = '';
   });
-  card.appendChild(sim); card.appendChild(cv); card.appendChild(nm); card.appendChild(dm); card.appendChild(pid);
-  card.addEventListener('click', function(){
-    if (TYPES[c.id]){ armCatalogPart(c.id, c.n); closeAdd(); return; }
-    card.classList.add('loading'); nm.textContent = 'מוריד…';
-    armCatalogPart(c.id, c.n, function(ok){
-      if (ok){ closeAdd(); }
-      else { card.classList.remove('loading'); nm.textContent = heGloss(c.n) || c.n; addMeta.textContent = 'ההורדה נכשלה — נסו בגרסת האתר'; }
-    });
-  });
+  card.appendChild(sim); card.appendChild(im); card.appendChild(nm); card.appendChild(dm); card.appendChild(pid);
+  // הקשה = תצוגה מקדימה גדולה; הקשה כפולה = הוספה מיידית
+  card.addEventListener('click', function(){ showPreview(c, card); });
+  card.addEventListener('dblclick', function(){ placeFromAdd(c, card); });
   return card;
 }
+/* תצוגה מקדימה בראש החלון — תמונה גדולה + כפתור הוספה */
+var addPreview = document.getElementById('addPreview');
+var addPvImg = document.getElementById('addPvImg');
+var _pvCur = null;
+function showPreview(c, card){
+  _pvCur = c;
+  addPreview.hidden = false;
+  addPvImg.src = partThumb(c.id);
+  document.getElementById('addPvName').textContent = heGloss(c.n) || c.n;
+  document.getElementById('addPvDim').textContent = dimLabel(c.id) || '';
+  document.getElementById('addPvId').textContent = c.id;
+  Array.prototype.forEach.call(addGrid.querySelectorAll('.addCard.cur'), function(el){ el.classList.remove('cur'); });
+  if (card) card.classList.add('cur');
+}
+document.getElementById('addPvGo').addEventListener('click', function(){ if (_pvCur) placeFromAdd(_pvCur); });
 function renderAddGrid(list){
   addGrid.innerHTML = '';
   if (!list.length){ var e = document.createElement('div'); e.className = 'addEmpty'; e.textContent = 'אין תוצאות — נסו מונח אחר'; addGrid.appendChild(e); return; }
@@ -1617,6 +1677,7 @@ function renderAddGrid(list){
 }
 function openAdd(){
   addPanel.hidden = false;
+  addPreview.hidden = true; _pvCur = null;
   addChips.innerHTML = '';
   QUICK.forEach(function(q){
     var b = document.createElement('button'); b.className = 'schip'; b.textContent = q[0];
@@ -2135,10 +2196,10 @@ function switchUser(name){
   curUser = name;
   try { localStorage.setItem('bb-user', name); } catch(e){}
   syncUserBtn();
-  undoStack = []; redoStack = [];
   currentGalId = null;
   buildSubChips();
   if (!load()) setModel([]); // משתמש חדש מתחיל בלוח נקי
+  loadHistory();             // משחזר את היסטוריית הקודם/הבא של המשתמש
 }
 var toastTimer = null;
 function toast(msg){
@@ -2316,8 +2377,10 @@ document.getElementById('btnGalNew').addEventListener('click', newModel);
 var stN = document.getElementById('stN'), stF = document.getElementById('stF');
 function syncTop(){
   stN.textContent = parts.length;
-  document.getElementById('btnUndo').disabled = !undoStack.length;
-  document.getElementById('btnRedo').disabled = !redoStack.length;
+  // הקודם/הבא תמיד ניתנים ללחיצה — עמעום רק כרמז שאין עוד צעד (הלחיצה מציגה הודעה)
+  var bu = document.getElementById('btnUndo'), br = document.getElementById('btnRedo');
+  bu.style.opacity = undoStack.length ? '1' : '0.4';
+  br.style.opacity = redoStack.length ? '1' : '0.4';
 }
 var fpsAcc = 0, fpsCnt = 0, fpsLast = 0;
 
@@ -2384,6 +2447,7 @@ if (sharedModel){
   setModel([]); // התחלה בלוח נקי; דגם לדוגמה זמין בתפריט 👤
   toast('לוח נקי ומוכן — בחרו חלק למטה והקישו על הלוח');
 }
+loadHistory();   // משחזר "הקודם/הבא" גם אחרי רענון הדף
 /* ==================== רמות בנייה (חינם / פרו) ==================== */
 /* אב-טיפוס בצד-לקוח: האכיפה כאן היא לחוויית-משתמש בלבד; אכיפה אמיתית תגיע עם השרת. */
 var FREE_CATS = {b:1, p:1, s:1, m:1};   // חינם: לבנים, פלטות, מיוחדים, מודולים
