@@ -84,7 +84,10 @@ window.BB_I18N = {
       "שם המודול (למשל: גלגל, מנוע, דלת)…":"Module name (e.g. wheel, engine, door)…",
       "אפליקציה עצמאית שאינה קשורה לקבוצת LEGO ואינה ממומנת או מאושרת על ידה. LEGO® הוא סימן מסחר של קבוצת LEGO. חלקים: LDraw.org (CC BY 4.0).":"An independent app, not connected to, sponsored by or endorsed by the LEGO Group. LEGO® is a trademark of the LEGO Group. Parts: LDraw.org (CC BY 4.0).",
       "הקשה מניחה · גרירה מזיזה · בחר חלק ו-✥ פותח שלט הזזה עדינה (חלק על חלק) · 🧩 שומר מודול · ▶ מניע גלגלים":"Tap to place · drag to move · select a part and ✥ opens the fine move pad · 🧩 saves a module · ▶ spins gears",
-      "{n} חלקים נבחרו":"{n} parts selected"
+      "{n} חלקים נבחרו":"{n} parts selected",
+      "ספריית דגמים":"Models library","דגמים":"Models","הכל":"All","🧱 רגיל":"🧱 Standard","רגיל":"Standard","מיוחד":"Special",
+      "שלב":"Step","‹ הקודם":"‹ Prev","הבא ›":"Next ›","🧱 בנה על הלוח":"🧱 Build on board","מפרט חלקים":"Parts list",
+      "נבנה על הלוח — אפשר לערוך":"Built on the board — you can edit","מבנים":"Structures","רכבים":"Vehicles","טבע":"Nature","רהיטים":"Furniture","אותיות":"Letters","תמונות":"Pictures"
     },
     es: {
       "בונה הקוביות":"Constructor de Bloques","בנה עם AI":"Crear con IA","שפה / Language":"Idioma","איך בונים? מדריך קצר":"¿Cómo construir? Guía rápida",

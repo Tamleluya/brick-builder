@@ -3203,6 +3203,376 @@ el('btnDoUpgrade').addEventListener('click', function(){
   toast('⭐ מנוי פרו הופעל — כל החלקים וה-AI פתוחים');
 });
 
+/* ==================== ספריית דגמים (250 דגמים, 2 רמות) ==================== */
+/* חלקים טעונים (יש גאומטריה → תמונות נרנדרות אופליין) */
+var LP = {
+  b11:'3005', b12:'3004', b14:'3010', b16:'3009', b18:'3008', b22:'3003', b23:'3002', b24:'3001', b26:'2456',
+  p12:'3023', p14:'3710', p22:'3022', p23:'3021', p24:'3020', p28:'3034', p44:'3031', p66:'3958',
+  sl22:'3039', sl12:'3040', slinv:'3660', rnd22:'3941', rnd11:'3062b', tile22:'3068b', tile12:'3069b',
+  wheel:'3482c01', wheelBig:'56145c01', door:'60623', win:'60594', gear24:'3648'
+};
+var MC = { red:'#c91a09', orange:'#fe8a18', yellow:'#f2cd37', green:'#237841', blue:'#0055bf', white:'#f2f3f2',
+  black:'#1b2a34', gray:'#a0a5a9', brown:'#5a3a22', tan:'#cca668', lime:'#a5ca18', purple:'#81007b',
+  dkred:'#720e0f', dkblue:'#0a3463', dkgreen:'#184632', sand:'#dccf8a', pink:'#e4adc8', cyan:'#37bfd0' };
+
+/* שכבת-לבנים ממלאת אזור w×d בליבנים 1×1 בגובה l */
+function fillRect(parts, x0, z0, w, d, l, type, color){
+  for (var i=0;i<w;i++) for (var j=0;j<d;j++) parts.push({ type:type, x:x0+i, z:z0+j, l:l, color:color });
+}
+/* מסגרת חלולה (קירות) w×d בגובה l */
+function ringRect(parts, x0, z0, w, d, l, type, color){
+  for (var i=0;i<w;i++){ parts.push({type:type,x:x0+i,z:z0,l:l,color:color}); parts.push({type:type,x:x0+i,z:z0+d-1,l:l,color:color}); }
+  for (var j=1;j<d-1;j++){ parts.push({type:type,x:x0,z:z0+j,l:l,color:color}); parts.push({type:type,x:x0+w-1,z:z0+j,l:l,color:color}); }
+}
+
+/* ----- ציור-פיקסלים: קיר עומד מלבנים 1×1 (תמונה) ----- */
+function pixelModel(rows, palette, dflt, scale){
+  var s = scale || 1, H = rows.length, parts = [];
+  for (var r=0;r<H;r++){
+    var row = rows[r];
+    for (var c=0;c<row.length;c++){
+      var ch = row[c]; if (ch === ' ' || ch === '.') continue;
+      var col = (palette && palette[ch]) || dflt || MC.red;
+      for (var sx=0;sx<s;sx++) for (var sy=0;sy<s;sy++)
+        parts.push({ type:LP.b11, x:c*s+sx, z:0, l:((H-1-r)*s+sy)*6, color:col });
+    }
+  }
+  return { parts:parts };
+}
+/* מוזאיקה שטוחה על הרצפה מדפוס פיקסלים (תמונה מלמעלה) */
+function mosaicModel(rows, palette, dflt){
+  var parts = [];
+  for (var r=0;r<rows.length;r++) for (var c=0;c<rows[r].length;c++){
+    var ch = rows[r][c]; if (ch===' '||ch==='.') continue;
+    parts.push({ type:LP.tile12?LP.b11:LP.b11, x:c, z:r, l:0, color:(palette&&palette[ch])||dflt||MC.blue });
+  }
+  return { parts:parts };
+}
+/* מגדל מלא (הרבה חלקים) */
+function genTowerSolid(w, layers, tier, color){
+  var parts = [];
+  for (var l=0;l<layers;l++) fillRect(parts, 0, 0, w, w, l*6, LP.b11, (tier===2 && l%3===0)?MC.gray:color);
+  return { parts:parts };
+}
+/* טירה: 4 מגדלים + חומות */
+function genCastle(size, tier){
+  var parts = [], W = size*4, color = MC.gray;
+  [[0,0],[W-size,0],[0,W-size],[W-size,W-size]].forEach(function(o){
+    for (var l=0;l<6;l++) ringRect(parts, o[0], o[1], size, size, l*6, LP.b11, color);
+    for (var i=0;i<size;i+=2){ parts.push({type:LP.b11,x:o[0]+i,z:o[1],l:36,color:color}); parts.push({type:LP.b11,x:o[0]+i,z:o[1]+size-1,l:36,color:color}); }
+  });
+  for (var l2=0;l2<3;l2++){ for (var i2=size;i2<W-size;i2++){ parts.push({type:LP.b11,x:i2,z:0,l:l2*6,color:color}); parts.push({type:LP.b11,x:i2,z:W-1,l:l2*6,color:color}); parts.push({type:LP.b11,x:0,z:i2,l:l2*6,color:color}); parts.push({type:LP.b11,x:W-1,z:i2,l:l2*6,color:color}); } }
+  if (tier===2) parts.push({type:LP.door,x:Math.floor(W/2)-1,z:0,l:0,color:MC.brown});
+  return { parts:parts };
+}
+/* ספרות 0-9 בגופן 3×5 */
+var DIGIT_FONT = {
+  '0':["111","101","101","101","111"],'1':["010","110","010","010","111"],'2':["111","001","111","100","111"],
+  '3':["111","001","111","001","111"],'4':["101","101","111","001","001"],'5':["111","100","111","001","111"],
+  '6':["111","100","111","101","111"],'7':["111","001","010","010","010"],'8':["111","101","111","101","111"],
+  '9':["111","101","111","001","111"]
+};
+var PIX = {
+  "לב":{rows:[".11.11.","1111111","1111111","1111111",".11111.","..111..","...1..."],col:MC.red},
+  "כוכב":{rows:["...1...","...1...",".11111.","1111111",".11111.",".1...1.","1.....1"],col:MC.yellow},
+  "פרצוף":{rows:[".11111.","1111111","1011101","1111111","1011101","1101011","1111111","01111.."].slice(0,7),col:MC.yellow},
+  "עץ":{rows:["..111..",".11111.","1111111",".11111.","..111..","...1...","...1...","..111.."],col:MC.green},
+  "פרח":{rows:[".2.2.","23132","2.2.2","..1..","..1..","4.1.4",".444."],col:MC.red,pal:{'1':MC.green,'2':MC.pink,'3':MC.yellow,'4':MC.green}},
+  "פטריה":{rows:[".11111.","1122111","1111111","1221221","..333..","..333..","..333.."],col:MC.red,pal:{'1':MC.red,'2':MC.white,'3':MC.tan}},
+  "דג":{rows:["........",".11111.1","111111111","1111111.1",".11111.1"].slice(0,5),col:MC.orange},
+  "חתול":{rows:["1.....1","11...11","1111111","1011101","1111111","1101011","1111111"],col:MC.gray},
+  "רוח":{rows:[".11111.","1111111","1011101","1111111","1111111","1111111","1.1.1.1"],col:MC.white},
+  "חייזר":{rows:["1.....1","..1.1..",".11111.","1101011","1111111","1.1.1.1","1.1.1.1","..1.1.."],col:MC.green},
+  "שמש":{rows:["1..1..1",".1.1.1.","..111..","1111111","..111..",".1.1.1.","1..1..1"],col:MC.yellow},
+  "לב-כחול":{rows:[".11.11.","1111111","1111111",".11111.","..111..","...1..."],col:MC.blue},
+  "יהלום":{rows:["..111..",".11111.","1111111",".11111.","..111..","...1..."],col:MC.cyan},
+  "כתר":{rows:["1..1..1","1.111.1","1111111","1111111","1111111"],col:MC.yellow},
+  "רקטה":{rows:["..1..",".111.",".111.","11111","1.1.1","1...1"],col:MC.red,pal:{'1':MC.white}},
+  "בית":{rows:["...1...","..111..",".11111.","1111111",".1...1.",".1.1.1.",".1...1."],col:MC.red},
+  "מפרשית":{rows:["...1...","..11...",".111...","1111...",".......","1111111",".11111."],col:MC.white},
+  "אפל":{rows:["...1...","..111..",".22222.","2222222","2222222","2222222",".22222."],col:MC.red,pal:{'1':MC.brown,'2':MC.red}},
+  "חץ":{rows:["...1...","..111..",".11111.","111111","..111..","..111..","..111.."],col:MC.green},
+  "מפתח":{rows:["1111...","1..1...","1111...","..1....","..1....","..111..","..1.1.."],col:MC.yellow}
+};
+
+/* ----- משפחות פרמטריות ----- */
+function genTower(w, layers, tier, color){
+  var parts = [], top = MC.gray;
+  for (var l=0;l<layers;l++) ringRect(parts, 0, 0, w, w, l*6, LP.b11, color);
+  if (tier === 2){
+    for (var i=0;i<w;i+=2){ parts.push({type:LP.b11,x:i,z:0,l:layers*6,color:top}); parts.push({type:LP.b11,x:i,z:w-1,l:layers*6,color:top}); }
+    for (var j=0;j<w;j+=2){ parts.push({type:LP.b11,x:0,z:j,l:layers*6,color:top}); parts.push({type:LP.b11,x:w-1,z:j,l:layers*6,color:top}); }
+  }
+  return { parts:parts };
+}
+function genPyramid(base, tier, color){
+  var parts = [], layers = Math.floor(base/2);
+  for (var l=0;l<layers;l++){ var s = base - l*2; if (s<1) break; fillRect(parts, l, l, s, s, l*6, LP.b11, l%2 ? color : (tier===2?MC.sand:color)); }
+  return { parts:parts };
+}
+function genWall(len, h, tier, color){
+  var parts = [];
+  for (var l=0;l<h;l++) for (var i=0;i<len;i++) parts.push({type:LP.b11,x:i,z:0,l:l*6,color:color});
+  if (tier === 2) for (var i2=0;i2<len;i2+=2) parts.push({type:LP.b11,x:i2,z:0,l:h*6,color:MC.gray});
+  return { parts:parts };
+}
+function genStairs(steps, tier, color){
+  var parts = [];
+  for (var s=0;s<steps;s++) for (var l=0;l<=s;l++) fillRect(parts, s*2, 0, 2, 2, l*6, LP.b22, color);
+  if (tier === 2) for (var s2=0;s2<steps;s2++) parts.push({type:LP.sl22,x:s2*2,z:2,l:s2*6,color:MC.gray});
+  return { parts:parts };
+}
+function genRobot(size, tier, color){
+  var parts = [], u = size, head = MC.gray;
+  // רגליים
+  fillRect(parts,0,0,u,u,0,LP.b22,MC.dkblue); fillRect(parts,0,0,u,u,6,LP.b22,MC.dkblue);
+  fillRect(parts,u+1,0,u,u,0,LP.b22,MC.dkblue); fillRect(parts,u+1,0,u,u,6,LP.b22,MC.dkblue);
+  // גוף
+  for (var l=0;l<3;l++) fillRect(parts,0,0,2*u+1,u+1,12+l*6,LP.b22,color);
+  // ידיים
+  for (var a=0;a<2;a++){ fillRect(parts,-1-a*0,0,1,1,18,LP.b11,color); }
+  // ראש
+  fillRect(parts, Math.floor(u/2), 0, u+1, u, 30, LP.b22, head);
+  if (tier===2){ parts.push({type:LP.rnd11,x:Math.floor(u/2),z:0,l:36,color:MC.red}); }
+  return { parts:parts };
+}
+function genTree(h, tier, color){
+  var parts = [], trunk = MC.brown;
+  for (var l=0;l<h;l++) parts.push({type:LP.b11,x:2,z:2,l:l*6,color:trunk});
+  var top = h*6;
+  for (var r=0;r<3;r++){ var s=3-Math.abs(r-1); fillRect(parts, 2-Math.floor(s/2), 2-Math.floor(s/2), s+1, s+1, top+r*6, tier===2?LP.rnd22:LP.b22, color); }
+  return { parts:parts };
+}
+function genRocket(size, tier, color){
+  var parts = [], w=size+1;
+  for (var l=0;l<6;l++) fillRect(parts,0,0,w,w,l*6, tier===2?LP.rnd22:LP.b22, l<2?MC.red:color);
+  // אף
+  if (tier===2){ parts.push({type:LP.sl22,x:0,z:0,l:36,color:MC.red}); }
+  else fillRect(parts,0,0,w-1,w-1,36,LP.b22,MC.red);
+  // סנפירים
+  parts.push({type:LP.sl12,x:-1,z:0,l:0,color:MC.gray}); parts.push({type:LP.sl12,x:w,z:0,l:0,color:MC.gray});
+  return { parts:parts };
+}
+function genCarStd(color){
+  var parts = [];
+  fillRect(parts,0,0,6,3,0,LP.b24,color); // בסיס
+  fillRect(parts,1,0,4,3,6,LP.b22,color);
+  fillRect(parts,1,0,2,2,12,LP.tile22,MC.cyan); // שמשה
+  [[0,0],[0,2],[4,0],[4,2]].forEach(function(w){ parts.push({type:LP.rnd11,x:w[0],z:w[1],l:0,color:MC.black}); });
+  return { parts:parts };
+}
+function genHouseStd(color){
+  var parts = [];
+  fillRect(parts,0,0,6,6,0,LP.p66||LP.p44,MC.tan);
+  for (var l=0;l<3;l++) ringRect(parts,0,0,6,6,l*6,LP.b11,color);
+  // גג מדורג
+  for (var r=0;r<3;r++) fillRect(parts,r,r,6-r*2,6-r*2,18+r*6,LP.b11,MC.dkred);
+  return { parts:parts };
+}
+function genBench(color){
+  var parts=[];
+  for (var i=0;i<2;i++){ parts.push({type:LP.b11,x:i*5,z:0,l:0,color:MC.brown}); parts.push({type:LP.b11,x:i*5,z:0,l:6,color:MC.brown}); }
+  for (var x=0;x<6;x++) parts.push({type:LP.p12?LP.b11:LP.b11,x:x,z:0,l:12,color:color});
+  return { parts:parts };
+}
+function genCheck(size, c1, c2){
+  var parts=[]; for (var i=0;i<size;i++) for (var j=0;j<size;j++) parts.push({type:LP.b11,x:i,z:j,l:0,color:(i+j)%2?c1:c2});
+  return { parts:parts };
+}
+function genWell(tier){
+  var parts=[]; for (var l=0;l<3;l++) ringRect(parts,0,0,4,4,l*6,LP.b11,MC.gray);
+  parts.push({type:LP.b11,x:0,z:0,l:24,color:MC.brown}); parts.push({type:LP.b11,x:3,z:0,l:24,color:MC.brown});
+  fillRect(parts,0,0,4,1,30,LP.b14,MC.dkred);
+  return { parts:parts };
+}
+
+/* ----- בניית הרישום (≈250 דגמים) ----- */
+var MODELS = [];
+function addModel(name, cat, tier, gen){ MODELS.push({ id:'m'+MODELS.length, name:name, cat:cat, tier:tier, gen:gen, _prog:null }); }
+function modelProg(m){ if (!m._prog) m._prog = m.gen(); return m._prog; }
+(function buildModelCatalog(){
+  var colNames = { red:'אדום', blue:'כחול', green:'ירוק', yellow:'צהוב', orange:'כתום', purple:'סגול', gray:'אפור', white:'לבן', cyan:'תכלת', pink:'ורוד', black:'שחור', brown:'חום' };
+  // פיקסל-ארט (רמה 1)
+  Object.keys(PIX).forEach(function(name){ var p=PIX[name]; addModel(name, 'תמונות', 1, function(){ return pixelModel(p.rows, p.pal, p.col); }); });
+  '0123456789'.split('').forEach(function(d){ addModel('ספרה '+d, 'אותיות', 1, (function(d){ return function(){ return pixelModel(DIGIT_FONT[d], null, MC.blue, 2); }; })(d)); });
+  // מוזאיקות שטוחות גדולות (רמה 1)
+  ['לב','כוכב','פרצוף','חייזר','פרח','דג'].forEach(function(n){ var p=PIX[n]; addModel('מוזאיקה '+n, 'תמונות', 1, (function(p){ return function(){ return mosaicModel(p.rows, p.pal, p.col); }; })(p)); });
+  // מגדלים
+  [3,4,5,6].forEach(function(w){ [5,8,12,16,22].forEach(function(h){ ['red','blue','gray','green'].forEach(function(c){
+    addModel('מגדל '+w+'×'+w+' · '+h+' קומות · '+colNames[c], 'מבנים', 1, (function(w,h,c){ return function(){ return genTower(w,h,1,MC[c]); }; })(w,h,c));
+  }); }); });
+  [4,5,6].forEach(function(w){ [8,14,20].forEach(function(h){ addModel('מגדל-מבצר '+w+'×'+w+' · '+h, 'מבנים', 2, (function(w,h){ return function(){ return genTower(w,h,2,MC.gray); }; })(w,h)); }); });
+  // פירמידות
+  [5,7,9,11].forEach(function(b){ addModel('פירמידה בסיס '+b, 'מבנים', 1, (function(b){ return function(){ return genPyramid(b,1,MC.sand); }; })(b)); });
+  [7,9,11].forEach(function(b){ addModel('פירמידת-מדרגות '+b, 'מבנים', 2, (function(b){ return function(){ return genPyramid(b,2,MC.tan); }; })(b)); });
+  // חומות
+  [8,12,16,24].forEach(function(len){ [3,5].forEach(function(h){ addModel('חומה '+len+'×'+h, 'מבנים', 1, (function(len,h){ return function(){ return genWall(len,h,1,MC.gray); }; })(len,h)); }); });
+  [12,16,24].forEach(function(len){ addModel('חומת-מבצר '+len, 'מבנים', 2, (function(len){ return function(){ return genWall(len,4,2,MC.gray); }; })(len)); });
+  // מדרגות
+  [4,6,8,10].forEach(function(s){ addModel('מדרגות '+s, 'מבנים', 1, (function(s){ return function(){ return genStairs(s,1,MC.gray); }; })(s)); });
+  [6,8,10].forEach(function(s){ addModel('מדרגות משופעות '+s, 'מבנים', 2, (function(s){ return function(){ return genStairs(s,2,MC.gray); }; })(s)); });
+  // בתים
+  ['red','blue','green','yellow','white'].forEach(function(c){ addModel('בית '+colNames[c], 'מבנים', 1, (function(c){ return function(){ return genHouseStd(MC[c]); }; })(c)); });
+  ['red','blue','green','yellow'].forEach(function(c){ addModel("קוטג' "+colNames[c], 'מבנים', 2, (function(c){ return function(){ return window.BrickAPI.carProgram ? genHouseStd(MC[c]) : genHouseStd(MC[c]); }; })(c)); });
+  // מכוניות
+  ['red','blue','green','yellow','orange','white','cyan'].forEach(function(c){ addModel('מכונית '+colNames[c], 'רכבים', 1, (function(c){ return function(){ return genCarStd(MC[c]); }; })(c)); });
+  ['red','blue','black','green','yellow','gray'].forEach(function(c){ addModel('קופה ספורט '+colNames[c], 'רכבים', 2, (function(c){ return function(){ return window.BrickAPI.carProgram({color:c}); }; })(c)); });
+  // רובוטים
+  [2,3].forEach(function(s){ ['gray','blue','red'].forEach(function(c){ addModel('רובוט '+s+' · '+colNames[c], 'דמויות', 1, (function(s,c){ return function(){ return genRobot(s,1,MC[c]); }; })(s,c)); }); });
+  [2,3].forEach(function(s){ ['gray','green'].forEach(function(c){ addModel('רובוט-על '+s+' · '+colNames[c], 'דמויות', 2, (function(s,c){ return function(){ return genRobot(s,2,MC[c]); }; })(s,c)); }); });
+  // עצים
+  [3,4,5].forEach(function(h){ addModel('עץ '+h, 'טבע', 1, (function(h){ return function(){ return genTree(h,1,MC.green); }; })(h)); });
+  [3,4,5].forEach(function(h){ addModel('עץ מעוגל '+h, 'טבע', 2, (function(h){ return function(){ return genTree(h,2,MC.dkgreen); }; })(h)); });
+  // רקטות
+  [2,3].forEach(function(s){ ['red','blue','white'].forEach(function(c){ addModel('רקטה '+s+' · '+colNames[c], 'רכבים', 1, (function(s,c){ return function(){ return genRocket(s,1,MC[c]); }; })(s,c)); }); });
+  [2,3].forEach(function(s){ ['white','gray'].forEach(function(c){ addModel('רקטה-חלל '+s, 'רכבים', 2, (function(s,c){ return function(){ return genRocket(s,2,MC[c]); }; })(s,c)); }); });
+  // ריצוף-שחמט
+  [4,6,8].forEach(function(n){ [['black','white'],['red','white'],['blue','yellow']].forEach(function(cc){ addModel('רצפת-שחמט '+n+'×'+n, 'תמונות', 1, (function(n,cc){ return function(){ return genCheck(n,MC[cc[0]],MC[cc[1]]); }; })(n,cc)); }); });
+  // ספסלים ובארות
+  ['brown','red','blue'].forEach(function(c){ addModel('ספסל '+(colNames[c]||c), 'רהיטים', 1, (function(c){ return function(){ return genBench(MC[c]); }; })(c)); });
+  addModel('באר', 'מבנים', 2, function(){ return genWell(2); });
+  // ----- דגמים גדולים (עד ~1000 חלקים) + עוד רמה-2 -----
+  [6,7,8,10].forEach(function(w){ [10,16,24].forEach(function(h){ ['red','blue','gray','green','yellow','purple'].forEach(function(c){
+    addModel('מגדל-ענק מלא '+w+'×'+w+' · '+h, 'מבנים', 1, (function(w,h,c){ return function(){ return genTowerSolid(w,h,1,MC[c]); }; })(w,h,c));
+  }); }); });
+  [8,10,12].forEach(function(w){ [14,20].forEach(function(h){ addModel('מגדל-ענק מיוחד '+w+'×'+w+' · '+h, 'מבנים', 2, (function(w,h){ return function(){ return genTowerSolid(w,h,2,MC.dkblue); }; })(w,h)); }); });
+  [13,15,17,19,21].forEach(function(b){ addModel('פירמידה גדולה '+b, 'מבנים', 1, (function(b){ return function(){ return genPyramid(b,1,MC.sand); }; })(b)); });
+  [15,17,19,21].forEach(function(b){ addModel('פירמידת-אבן '+b, 'מבנים', 2, (function(b){ return function(){ return genPyramid(b,2,MC.tan); }; })(b)); });
+  [2,3,4].forEach(function(s){ addModel('טירה '+(s*4)+'×'+(s*4), 'מבנים', 2, (function(s){ return function(){ return genCastle(s,2); }; })(s)); });
+  // מוזאיקות ריצוף גדולות
+  [8,10,12,16].forEach(function(n){ [['black','white'],['red','yellow'],['blue','cyan'],['green','lime']].forEach(function(cc){
+    addModel('ריצוף-ענק '+n+'×'+n, 'תמונות', 1, (function(n,cc){ return function(){ return genCheck(n,MC[cc[0]],MC[cc[1]]); }; })(n,cc)); }); });
+  // עוד מכוניות רמה-2 (עם גלגלים אמיתיים) בכל הצבעים
+  ['orange','white','purple','cyan'].forEach(function(c){ addModel('קופה ספורט '+({orange:'כתום',white:'לבן',purple:'סגול',cyan:'תכלת'}[c]), 'רכבים', 2, (function(c){ return function(){ return window.BrickAPI.carProgram({color:c}); }; })(c)); });
+  // שומרים רק דגמים בטווח המבוקש: 20–1000 חלקים
+  MODELS = MODELS.filter(function(m){ var n = modelProg(m).parts.length; return n >= 20 && n <= 1000; });
+})();
+
+/* ----- רינדור תמונת-דגם תלת-מימד ----- */
+var modelThumbCache = {};
+function modelThumb(prog, key, maxParts){
+  if (key && modelThumbCache[key]) return modelThumbCache[key];
+  try {
+    thumbRenderer();
+    var g = new THREE.Group();
+    var list = prog.parts.slice(0, maxParts || prog.parts.length);
+    list.forEach(function(p){
+      var type = resolveType(p.type != null ? p.type : p.t); if (!type || !TYPES[type]) return;
+      var np = { t:type, x:Math.round(p.x)||0, z:Math.round(p.z)||0, l:Math.round(p.l)||0, q:(Array.isArray(p.q)?p.q:null) };
+      var mesh = new THREE.Mesh(geomFor(type), matFor(p.color || p.c || defColor(type) || '#c91a09'));
+      mesh.quaternion.copy(quatOf(np)); mesh.position.copy(gridPos(np));
+      g.add(mesh);
+    });
+    _thumbScene.add(g); g.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(g);
+    if (box.isEmpty()){ _thumbScene.remove(g); return ''; }
+    var ctr = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    var size = Math.max(sz.x, sz.y, sz.z, 1);
+    var dir = new THREE.Vector3(0.8, 0.68, 1).normalize();
+    _thumbCam.position.copy(ctr).add(dir.multiplyScalar(size * 1.7 + 2));
+    _thumbCam.lookAt(ctr);
+    _thumbR.render(_thumbScene, _thumbCam);
+    var url = _thumbR.domElement.toDataURL('image/png');
+    _thumbScene.remove(g);   // אין dispose — הגאומטריה/חומר משותפים (geoCache/matCache)
+    if (key) modelThumbCache[key] = url;
+    return url;
+  } catch(e){ return ''; }
+}
+/* פירוט חלקים (BOM) */
+function modelBOM(prog){
+  var counts = {};
+  prog.parts.forEach(function(p){ var ty = resolveType(p.type != null ? p.type : p.t) || p.type; counts[ty] = (counts[ty]||0)+1; });
+  return Object.keys(counts).map(function(ty){
+    var nm = (PD.parts[ty] && PD.parts[ty].n) || catalogName(ty) || ty;
+    return { id:ty, name:nm, count:counts[ty] };
+  }).sort(function(a,b){ return b.count - a.count; });
+}
+
+/* ==================== ממשק ספריית הדגמים ==================== */
+var libPanel = document.getElementById('libPanel');
+var libTier = 0;   // 0 = הכל, 1/2 רמות
+var _libObserver = null;
+function openLib(){
+  libPanel.hidden = false;
+  document.getElementById('libDetail').hidden = true;
+  document.getElementById('libGallery').hidden = false;
+  renderLibGallery();
+}
+function closeLib(){ libPanel.hidden = true; }
+function renderLibGallery(){
+  var grid = document.getElementById('libGrid'); grid.innerHTML = '';
+  document.getElementById('libCount').textContent = t('דגמים');
+  var shown = MODELS.filter(function(m){ return !libTier || m.tier === libTier; });
+  document.getElementById('libMeta').textContent = shown.length + ' ' + t('דגמים') + (libTier ? ' · ' + t(libTier===1?'רגיל':'מיוחד') : '');
+  if (_libObserver) _libObserver.disconnect();
+  _libObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if (!en.isIntersecting) return;
+      var card = en.target, m = MODELS[+card.dataset.i];
+      var prog = modelProg(m);
+      card.querySelector('img').src = modelThumb(prog, m.id);
+      card.querySelector('.libN').textContent = m.name;
+      card.querySelector('.libP').textContent = prog.parts.length + ' ' + t('חלקים');
+      _libObserver.unobserve(card);
+    });
+  }, { root:grid, rootMargin:'120px' });
+  shown.forEach(function(m){
+    var card = document.createElement('button'); card.className = 'libCard'; card.dataset.i = MODELS.indexOf(m);
+    var badge = document.createElement('span'); badge.className = 'libTier t'+m.tier; badge.textContent = m.tier===1 ? t('רגיל') : t('מיוחד');
+    var im = document.createElement('img'); im.className = 'libImg'; im.alt = '';
+    var nm = document.createElement('span'); nm.className = 'libN'; nm.textContent = m.name;
+    var pc = document.createElement('span'); pc.className = 'libP'; pc.textContent = '…';
+    card.appendChild(badge); card.appendChild(im); card.appendChild(nm); card.appendChild(pc);
+    card.addEventListener('click', function(){ openLibDetail(m); });
+    grid.appendChild(card);
+    _libObserver.observe(card);
+  });
+}
+var _libStep = 0, _libSteps = 1, _libCur = null;
+function openLibDetail(m){
+  _libCur = m;
+  var prog = modelProg(m);
+  document.getElementById('libGallery').hidden = true;
+  var d = document.getElementById('libDetail'); d.hidden = false;
+  document.getElementById('libDName').textContent = m.name;
+  document.getElementById('libDMeta').textContent = prog.parts.length + ' ' + t('חלקים') + ' · ' + (m.tier===1?t('רגיל'):t('מיוחד'));
+  // BOM
+  var bom = modelBOM(prog), bl = document.getElementById('libBom'); bl.innerHTML = '';
+  bom.forEach(function(b){
+    var row = document.createElement('div'); row.className = 'bomRow';
+    row.innerHTML = '<span class="bomN"></span><b class="bomC">×'+b.count+'</b>';
+    row.querySelector('.bomN').textContent = b.name;
+    bl.appendChild(row);
+  });
+  // step player
+  _libSteps = Math.min(12, Math.max(2, Math.ceil(prog.parts.length / 20)));
+  _libStep = _libSteps;
+  renderLibStep();
+}
+function renderLibStep(){
+  var prog = modelProg(_libCur);
+  var upto = _libStep >= _libSteps ? prog.parts.length : Math.round(prog.parts.length * _libStep / _libSteps);
+  document.getElementById('libDImg').src = modelThumb(prog, _libCur.id + ':' + _libStep + '/' + _libSteps, upto);
+  document.getElementById('libStepLbl').textContent = t('שלב') + ' ' + _libStep + '/' + _libSteps + ' · ' + upto + ' ' + t('חלקים');
+}
+document.getElementById('btnLib').addEventListener('click', openLib);
+document.getElementById('btnCloseLib').addEventListener('click', closeLib);
+libPanel.addEventListener('click', function(e){ if (e.target === libPanel) closeLib(); });
+document.getElementById('btnLibBack').addEventListener('click', function(){ document.getElementById('libDetail').hidden = true; document.getElementById('libGallery').hidden = false; });
+Array.prototype.forEach.call(document.querySelectorAll('.libTierBtn'), function(b){
+  b.addEventListener('click', function(){ libTier = +b.dataset.tier; Array.prototype.forEach.call(document.querySelectorAll('.libTierBtn'), function(x){ x.classList.toggle('on', x===b); }); renderLibGallery(); });
+});
+document.getElementById('btnStepPrev').addEventListener('click', function(){ if (_libStep>1){ _libStep--; renderLibStep(); } });
+document.getElementById('btnStepNext').addEventListener('click', function(){ if (_libStep<_libSteps){ _libStep++; renderLibStep(); } });
+document.getElementById('btnLibBuild').addEventListener('click', function(){
+  if (!_libCur) return;
+  window.BrickAPI.build(modelProg(_libCur));
+  closeLib();
+  setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 300);
+  toast(t('נבנה על הלוח — אפשר לערוך'));
+});
+window.__models = function(){ return MODELS.map(function(m){ return { name:m.name, tier:m.tier, cat:m.cat, parts:modelProg(m).parts.length }; }); };
+
 syncTop();
 requestAnimationFrame(tick);
 syncTierUI();
