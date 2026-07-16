@@ -102,7 +102,18 @@ window.BB_I18N = {
       "מצב מקומי: מוצגים דגמים שפורסמו מהמכשיר הזה. לשיתוף עם כולם — שלחו קישור, או חברו שרת (⚙️ למטה).":"Local mode: showing models published from this device. To share with everyone — send a link, or connect a server (⚙️ below).",
       "לא הצלחתי להתחבר לשרת — מציג דגמים מקומיים.":"Couldn't reach the server — showing local models.","נטען — אפשר לערוך ולשמור לאזור האישי":"Loaded — you can edit and save to your area","שגיאה בטעינה":"Load error",
       "פורסם לכולם!":"Published to everyone!","פורסם מקומית — השרת לא הגיב":"Published locally — server didn't respond","קישור לשיתוף הועתק — כל מי שיפתח יראה את הדגם":"Share link copied — anyone who opens it sees the model","שם הדגם לפרסום:":"Model name to publish:",
-      "חיבור שרת לשיתוף גלובלי (למנהל)":"Connect a server for global sharing (admin)","נשמר":"Saved"
+      "חיבור שרת לשיתוף גלובלי (למנהל)":"Connect a server for global sharing (admin)","נשמר":"Saved",
+      "🪞 שקף":"🪞 Mirror","▦ מערך":"▦ Array","חלקים שוקפו לצד השני":"parts mirrored to the other side","בחרו חלקים תחילה":"Select parts first",
+      "מצב סימטריה פועל — כל חלק חדש יונח גם בצד השני של הלוח":"Symmetry on — every new part is also placed on the other side","מצב סימטריה כבוי":"Symmetry off",
+      "מצב סימטריה — כל חלק יונח גם בצד השני":"Symmetry mode — every part is also placed on the other side","שכפול-מראה לצד השני של הלוח":"Mirror-copy to the other side",
+      "בדיקת יציבות — חלקים מרחפים וחפיפות":"Stability check — floating parts and overlaps","יציב! כל":"Stable! All","החלקים מחוברים":"parts are connected",
+      "חלקים מרחפים באוויר (אדום)":"parts floating in the air (red)","חלקים חופפים (כתום)":"overlapping parts (orange)",
+      "▦ מערך — שכפול בתבנית":"▦ Array — pattern duplicate","כמות":"Count","כיוון":"Direction","רווח":"Gap","↔ לרוחב":"↔ Width","↕ לעומק":"↕ Depth","⬆ לגובה":"⬆ Height","▦ בנה מערך":"▦ Build array","שכפול בשורה / מגדל":"Duplicate in a row / tower","חלקים נוספו במערך":"parts added in the array",
+      "חיתוך קומות":"Floor cut","חיתוך קומות — הצצה לתוך המבנה":"Floor cut — peek inside the build","מציג הכל":"Showing all","עד גובה":"Up to height",
+      "חיתוך קומות — ▼ מוריד את קו-החיתוך ומציץ פנימה, 👁 מציג הכל":"Floor cut — ▼ lowers the cut line to peek inside, 👁 shows all",
+      "חוברת הוראות":"Instruction booklet","חוברת הוראות לדגם שעל הלוח":"Instruction booklet for the model on the board","הדגם שלי":"My model","הדפסה":"Print","שלבים":"steps","חלקים עד כה":"parts so far","חלק":"Part",
+      "החלון נחסם — אפשרו חלונות קופצים":"Popup blocked — allow popups","חוברת ההוראות נפתחה — אפשר להדפיס":"Instruction booklet opened — you can print",
+      "צילום הדגם":"Model photo","הורדת תמונה של הדגם":"Download a picture of the model","התמונה ירדה למכשיר":"Image downloaded"
     },
     es: {
       "בונה הקוביות":"Constructor de Bloques","בנה עם AI":"Crear con IA","שפה / Language":"Idioma","איך בונים? מדריך קצר":"¿Cómo construir? Guía rápida",

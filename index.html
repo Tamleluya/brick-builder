@@ -143,6 +143,44 @@
   .mvRot{flex:1;border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;padding:10px 6px;font-size:13px;font-family:inherit;font-weight:600;}
   .mvRot:active{background:var(--accent);color:var(--accent-ink);transform:scale(.96);}
+
+  /* בקרת מנוע (מהירות/כיוון) */
+  .spinCtl[hidden],.arrayPop[hidden],.floorCtl[hidden]{display:none;}
+  .spinCtl{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:12;
+    display:flex;align-items:center;gap:4px;padding:6px 8px;}
+  .scBtn{width:38px;height:38px;border:0;border-radius:10px;cursor:pointer;background:var(--panel-soft);
+    color:var(--text);font-size:17px;line-height:1;font-family:inherit;display:flex;align-items:center;justify-content:center;}
+  .scBtn:active{background:var(--accent);color:var(--accent-ink);transform:scale(.94);}
+  .scBtn.stop{color:#ff8a80;}
+  .scLbl{min-width:44px;text-align:center;font-size:13px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;}
+
+  /* מערך */
+  .arrayPop{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);left:50%;transform:translateX(-50%);
+    z-index:14;display:flex;flex-direction:column;gap:8px;padding:12px 14px;width:min(320px,92vw);}
+  .apTitle{font-size:13px;font-weight:700;color:var(--accent);}
+  .apRow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .apRow.acts{justify-content:flex-end;padding-top:2px;}
+  .apLbl{font-size:12px;color:var(--muted);min-width:42px;}
+  .apBtn{width:32px;height:32px;border:0;border-radius:9px;cursor:pointer;background:var(--panel-soft);
+    color:var(--text);font-size:17px;font-family:inherit;}
+  .apBtn:active{background:var(--accent);color:var(--accent-ink);}
+  .apVal{min-width:26px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums;}
+  .apAxis{border:0;cursor:pointer;background:var(--panel-soft);color:var(--muted);border-radius:999px;
+    padding:7px 11px;font-size:12px;font-family:inherit;}
+  .apAxis.on{background:var(--accent);color:var(--accent-ink);font-weight:700;}
+
+  /* חיתוך קומות */
+  .floorCtl{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:12;
+    display:flex;align-items:center;gap:4px;padding:6px 8px;}
+  .fcTtl{font-size:16px;}
+  .floorCtl .scLbl{min-width:92px;}
+
+  /* צבעים שקופים — שתי-וערב עדין מתחת לצבע */
+  .sw{position:relative;}
+  .sw.tr{opacity:.9;}
+  .sw.tr::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:repeating-conic-gradient(rgba(255,255,255,.5) 0% 25%, transparent 0% 50%) 0 0/8px 8px;
+    mix-blend-mode:soft-light;}
   .mvhub{cursor:pointer;}
   .mvhub:active{color:var(--accent);}
   /* סרגל פעולות — נגרר מכל שטח פנוי; ידית ברורה */
@@ -539,6 +577,11 @@
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
   <button class="tbtn" id="btnPlay" title="הנעת גלגלי שיניים">▶</button>
+  <button class="tbtn" id="btnSym" title="מצב סימטריה — כל חלק יונח גם בצד השני">🪞</button>
+  <button class="tbtn" id="btnCheck" title="בדיקת יציבות — חלקים מרחפים וחפיפות">🧪</button>
+  <button class="tbtn" id="btnFloors" title="חיתוך קומות — הצצה לתוך המבנה">🏢</button>
+  <button class="tbtn" id="btnBook" title="חוברת הוראות לדגם שעל הלוח">📖</button>
+  <button class="tbtn" id="btnShot" title="הורדת תמונה של הדגם">📷</button>
   <button class="tbtn" id="btnUndo" title="הקודם">↩</button>
   <button class="tbtn" id="btnRedo" title="הבא">↪</button>
   <button class="tbtn" id="btnClear" title="נקה הכל">🗑</button>
@@ -582,6 +625,41 @@
   </div>
 </div>
 
+<div class="spinCtl pill" id="spinCtl" hidden>
+  <button class="scBtn" id="btnSpinRev" title="הפוך כיוון">⇄</button>
+  <button class="scBtn" id="btnSpinSlow" title="האט">−</button>
+  <span class="scLbl" id="spinSpeedLbl">×1</span>
+  <button class="scBtn" id="btnSpinFast" title="האץ">+</button>
+  <button class="scBtn stop" id="btnSpinStop" title="עצור">⏹</button>
+</div>
+
+<div class="arrayPop pill" id="arrayPop" hidden>
+  <div class="apTitle">▦ מערך — שכפול בתבנית</div>
+  <div class="apRow"><span class="apLbl">כמות</span>
+    <button class="apBtn" id="arrCntMinus">−</button><b class="apVal" id="arrCntVal">3</b><button class="apBtn" id="arrCntPlus">+</button>
+  </div>
+  <div class="apRow"><span class="apLbl">כיוון</span>
+    <button class="apAxis on" data-ax="x">↔ לרוחב</button>
+    <button class="apAxis" data-ax="z">↕ לעומק</button>
+    <button class="apAxis" data-ax="y">⬆ לגובה</button>
+  </div>
+  <div class="apRow"><span class="apLbl">רווח</span>
+    <button class="apBtn" id="arrGapMinus">−</button><b class="apVal" id="arrGapVal">0</b><button class="apBtn" id="arrGapPlus">+</button>
+  </div>
+  <div class="apRow acts">
+    <button class="abtn" id="btnArrClose">סגור</button>
+    <button class="abtn wide" id="btnArrBuild">▦ בנה מערך</button>
+  </div>
+</div>
+
+<div class="floorCtl pill" id="floorCtl" hidden>
+  <span class="fcTtl">🏢</span>
+  <button class="scBtn" id="btnFloorDown" title="חתוך קומה למטה">▼</button>
+  <span class="scLbl" id="floorLbl">מציג הכל</span>
+  <button class="scBtn" id="btnFloorUp" title="קומה למעלה">▲</button>
+  <button class="scBtn" id="btnFloorAll" title="הצג הכל">👁</button>
+  <button class="scBtn stop" id="btnFloorClose" title="סגור">✕</button>
+</div>
 
 <div id="boxSel"></div>
 
@@ -618,6 +696,8 @@
   <button class="abtn onlyOne" id="btnPitch" title="הטיה קדימה">⤓ הטה</button>
   <button class="abtn onlyOne" id="btnRoll" title="גלגול הצידה">⤿ גלגל</button>
   <button class="abtn" id="btnDup">⧉ שכפל</button>
+  <button class="abtn" id="btnMirror" title="שכפול-מראה לצד השני של הלוח">🪞 שקף</button>
+  <button class="abtn" id="btnArray" title="שכפול בשורה / מגדל">▦ מערך</button>
   <button class="abtn" id="btnPaint">🎨 צבע</button>
   <button class="abtn" id="btnSaveSub" title="שמירת הבחירה כמודול">🧩 מודול</button>
   <button class="abtn danger" id="btnDel">✕ מחק</button>
