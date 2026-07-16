@@ -3923,6 +3923,8 @@ if (document.getElementById('btnComSetupToggle')) document.getElementById('btnCo
 if (document.getElementById('btnComEndpointSave')) document.getElementById('btnComEndpointSave').addEventListener('click', function(){ setGalleryEndpoint(document.getElementById('comEndpoint').value.trim()); syncComMode(); loadCommunity(); toast(t('נשמר')); });
 if (document.getElementById('btnInvSave')) document.getElementById('btnInvSave').addEventListener('click', function(){ saveNamedToGallery(t('הבית שלי') + ' · ' + curUser); });
 if (document.getElementById('btnInvPublish')) document.getElementById('btnInvPublish').addEventListener('click', function(){ publishToCommunity(t('הבית שלי') + ' · ' + curUser); });
+if (document.getElementById('btnLibSave')) document.getElementById('btnLibSave').addEventListener('click', function(){ if (!_libCur) return; window.BrickAPI.build(modelProg(_libCur)); closeLib(); setTimeout(function(){ saveNamedToGallery(_libCur.name); if (window.__fitView) window.__fitView(); }, 150); });
+if (document.getElementById('btnLibPublish')) document.getElementById('btnLibPublish').addEventListener('click', function(){ if (!_libCur) return; window.BrickAPI.build(modelProg(_libCur)); closeLib(); setTimeout(function(){ publishToCommunity(_libCur.name + ' · ' + curUser); if (window.__fitView) window.__fitView(); }, 150); });
 window.__publish = function(n){ publishToCommunity(n); };
 window.__saveGal = function(n){ return saveNamedToGallery(n); };
 window.__community = function(){ return { endpoint:galleryEndpoint(), local:getPubLocal().length, galCount:getGal().length }; };
