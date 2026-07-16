@@ -933,18 +933,56 @@ function groupYaw(){
   });
   ps.forEach(addOcc); ps.forEach(placeMesh); save(); vibrate(6);
 }
-/* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה (חלק בודד) */
-document.getElementById('btnRot').addEventListener('click', function(){
-  if (selIds.length > 1){ groupYaw(); return; }
+/* מיקום עולמי של חלק (חופשי → p.pos, אחרת מיקום הרשת) */
+function selWorldPos(p){ return (p.free && p.pos) ? new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]) : gridPos(p).clone(); }
+/* הרמת הקבוצה כך שהנקודה הנמוכה ביותר יושבת על הריצפה (לא שוקעים מתחת ללוח) */
+function clampSelFloor(ps){
+  var minY = Infinity;
+  ps.forEach(function(p){
+    var m = meshes.get(p.id); if (!m) return;
+    m.updateMatrixWorld(true);
+    var b = new THREE.Box3().setFromObject(m);
+    if (b.min.y < minY) minY = b.min.y;
+  });
+  if (minY !== Infinity && minY < -0.001){
+    var lift = -minY;
+    ps.forEach(function(p){ if (p.free && p.pos){ p.pos[1] += lift; placeMesh(p); } });
+  }
+}
+/* סיבוב yaw של הבחירה כגוף קשיח סביב מרכזה — עובד גם על חלקים חופשיים (אחרי הזזה בג'ויסטיק) */
+function rotateSelYaw(dir){
+  var ps = selParts(); if (!ps.length) return;
+  dir = dir >= 0 ? 1 : -1;
+  pushUndo(snapshot());
+  var cx = 0, cz = 0;
+  var wps = ps.map(function(p){ var w = selWorldPos(p); cx += w.x; cz += w.z; return w; });
+  cx /= ps.length; cz /= ps.length;
+  ps.forEach(function(p, i){
+    var w = wps[i], ox = w.x - cx, oz = w.z - cz;
+    remOcc(p);
+    p.q = rotatedQuat(p, 'y', dir);
+    p.free = true;
+    p.pos = [cx + (dir > 0 ? -oz : oz), w.y, cz + (dir > 0 ? ox : -ox)];
+    placeMesh(p);
+  });
+  clampSelFloor(ps);
+  save(); vibrate(6);
+}
+/* פעולת סיבוב מאוחדת — נגישה גם מהסרגל וגם מהג'ויסטיק */
+function doRotate(dir){
+  dir = dir >= 0 ? 1 : -1;
+  if (selIds.length > 1){ rotateSelYaw(dir); return; }
   if (sel && sel.free && sel.aLocal){
-    // חלק מחובר: מסתובב סביב ציר החיבור, נקודת החיבור נשארת במקום
     pushUndo(snapshot());
-    rotateAroundConn(sel, 45);
+    rotateAroundConn(sel, 45 * dir);
     placeMesh(sel); save(); vibrate(6);
     return;
   }
-  if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', 1); });
-});
+  if (sel && sel.free){ rotateSelYaw(dir); return; }
+  if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'y', dir); });
+}
+/* שלושה צירי סיבוב עולמיים — כל 24 הכיוונים נגישים בהרכבה (חלק בודד) */
+document.getElementById('btnRot').addEventListener('click', function(){ doRotate(1); });
 document.getElementById('btnPitch').addEventListener('click', function(){
   if (selIds.length > 1){ toast('הטיה וגלגול פועלים על חלק בודד — בחרו חלק אחד'); return; }
   if (sel) reorient(sel, function(p){ p.q = rotatedQuat(p, 'x', 1); });
@@ -2519,6 +2557,17 @@ Array.prototype.forEach.call(document.querySelectorAll('.mvb'), function(btn){
   btn.addEventListener('pointerleave', stop);
   btn.addEventListener('pointercancel', stop);
 });
+/* סיבוב מתוך הג'ויסטיק — כדי שאפשר גם להזיז וגם לסובב באותו שלט */
+Array.prototype.forEach.call(document.querySelectorAll('.mvRot'), function(btn){
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    if (!selIds.length){ toast('בחרו חלק תחילה'); return; }
+    doRotate(parseInt(btn.getAttribute('data-rot'), 10) || 1);
+  });
+});
+window.__selAll = function(){ selIds = parts.map(function(p){ return p.id; }); afterSel(); return selIds.length; };
+window.__rotateSel = function(d){ doRotate(d || 1); return selParts().map(function(p){ return { id:p.id, free:!!p.free, x:p.x, z:p.z, l:p.l, pos:p.pos ? p.pos.slice() : null }; }); };
+window.__moveSel = function(dx,dy,dz){ moveSelBy(new THREE.Vector3(dx||0,dy||0,dz||0)); return selParts().map(function(p){ return { free:!!p.free, pos:p.pos ? p.pos.slice() : null }; }); };
 
 /* ---------- משתמשים ושיתוף ---------- */
 function getUsers(){ try { return JSON.parse(localStorage.getItem('bb-users') || '[]'); } catch(e){ return []; } }

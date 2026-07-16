@@ -139,6 +139,10 @@
   .mvSnap{border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
     border-radius:10px;padding:9px;font-size:12.5px;font-family:inherit;}
   .mvSnap:active{background:var(--accent);color:var(--accent-ink);}
+  .mvRotRow{display:flex;gap:6px;margin-bottom:6px;}
+  .mvRot{flex:1;border:0;cursor:pointer;background:var(--panel-soft);color:var(--text);
+    border-radius:10px;padding:10px 6px;font-size:13px;font-family:inherit;font-weight:600;}
+  .mvRot:active{background:var(--accent);color:var(--accent-ink);transform:scale(.96);}
   .mvhub{cursor:pointer;}
   .mvhub:active{color:var(--accent);}
   /* סרגל פעולות — נגרר מכל שטח פנוי; ידית ברורה */
@@ -569,6 +573,10 @@
       <button class="mvb" data-dir="right" aria-label="ימינה">►</button>
       <button class="mvb down" data-dir="down" aria-label="הנמכה">⬇</button>
       <button class="mvb" data-dir="back" aria-label="אחורה">▼</button>
+    </div>
+    <div class="mvRotRow">
+      <button class="mvRot" data-rot="-1" aria-label="סובב שמאלה">⟲ סובב</button>
+      <button class="mvRot" data-rot="1" aria-label="סובב ימינה">סובב ⟳</button>
     </div>
     <button class="mvSnap" id="btnSnapGrid">⊙ הצמד לרשת</button>
   </div>
