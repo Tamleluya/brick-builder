@@ -94,7 +94,15 @@ window.BB_I18N = {
       "חלקים במלאי":"parts in stock","🔍 מה אפשר לבנות":"🔍 What can I build","🏠 בנה לי דגם":"🏠 Build me a model",
       "נוצל":"Used","נשאר":"Left over","נבנה!":"Built!","דגמים מהספרייה שמתאימים למלאי":"Library models that fit your parts",
       "אפשר לבנות":"Can build","חסר":"Missing","אין עדיין דגם שמתאים — הוסיפו עוד לבנים 1×1":"No matching model yet — add more 1×1 bricks",
-      "מלאי נטען":"Inventory loaded","הוסיפו קודם חלקים למלאי":"Add some parts to your inventory first","לא הצלחתי לבנות מהחלקים האלה — נסו להוסיף לבנים":"Couldn't build from these — try adding bricks"
+      "מלאי נטען":"Inventory loaded","הוסיפו קודם חלקים למלאי":"Add some parts to your inventory first","לא הצלחתי לבנות מהחלקים האלה — נסו להוסיף לבנים":"Couldn't build from these — try adding bricks",
+      "💾 שמור לאזור האישי":"💾 Save to my area","🌍 פרסם לכולם":"🌍 Publish to everyone","נשמר לאזור האישי":"Saved to your area","הבית שלי":"My house","הלוח ריק — בנו משהו קודם":"Board is empty — build something first",
+      "גלריה כללית":"Community gallery","הדגמים שלי — האזור האישי":"My models — personal area","גלריה כללית — הדגמים של כולם":"Community gallery — everyone's models",
+      "↻ רענן":"↻ Refresh","🌍 פרסם את הדגם שלי":"🌍 Publish my model","מחובר לשיתוף גלובלי":"Connected to global sharing","מצב מקומי — פרסום יוצר גם קישור לשיתוף":"Local mode — publishing also makes a share link",
+      "דגם":"Model","אנונימי":"Anonymous","עדיין אין דגמים משותפים. בנו משהו ולחצו \"פרסם\".":"No shared models yet. Build something and tap Publish.","טוען…":"Loading…",
+      "מצב מקומי: מוצגים דגמים שפורסמו מהמכשיר הזה. לשיתוף עם כולם — שלחו קישור, או חברו שרת (⚙️ למטה).":"Local mode: showing models published from this device. To share with everyone — send a link, or connect a server (⚙️ below).",
+      "לא הצלחתי להתחבר לשרת — מציג דגמים מקומיים.":"Couldn't reach the server — showing local models.","נטען — אפשר לערוך ולשמור לאזור האישי":"Loaded — you can edit and save to your area","שגיאה בטעינה":"Load error",
+      "פורסם לכולם!":"Published to everyone!","פורסם מקומית — השרת לא הגיב":"Published locally — server didn't respond","קישור לשיתוף הועתק — כל מי שיפתח יראה את הדגם":"Share link copied — anyone who opens it sees the model","שם הדגם לפרסום:":"Model name to publish:",
+      "חיבור שרת לשיתוף גלובלי (למנהל)":"Connect a server for global sharing (admin)","נשמר":"Saved"
     },
     es: {
       "בונה הקוביות":"Constructor de Bloques","בנה עם AI":"Crear con IA","שפה / Language":"Idioma","איך בונים? מדריך קצר":"¿Cómo construir? Guía rápida",

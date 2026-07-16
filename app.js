@@ -3833,6 +3833,100 @@ window.__invBuild = function(src){ return autoBuildFromInventory(src||inv); };
 window.__invMatches = function(src){ return invMatches(src||inv, 12).map(function(r){ return { name:r.m.name, ok:r.ok, cover:+r.cover.toFixed(2), parts:r.parts }; }); };
 window.__setInv = function(o){ inv = o||{}; saveInv(); renderInvGrid(); };
 
+/* ==================== שמירה לאזור אישי + גלריה כללית (שיתוף לכולם) ==================== */
+/* שמירה מהירה של הלוח הנוכחי לאזור האישי (getGal/setGal קיימים) */
+function saveNamedToGallery(name){
+  if (parts.length < 1){ toast(t('הלוח ריק — בנו משהו קודם')); return null; }
+  var gal = getGal(), id = uid();
+  gal.push({ id:id, name:name || ('דגם ' + (gal.length+1)), thumb:captureThumb(), parts:snapshot(), ts:Date.now() });
+  setGal(gal); currentGalId = id; vibrate(9);
+  toast('💾 ' + t('נשמר לאזור האישי') + (name ? ': ' + name : ''));
+  return id;
+}
+
+function galleryEndpoint(){ try { return localStorage.getItem('bb-gallery-endpoint') || ''; } catch(e){ return ''; } }
+function setGalleryEndpoint(v){ try { if (v) localStorage.setItem('bb-gallery-endpoint', v); else localStorage.removeItem('bb-gallery-endpoint'); } catch(e){} }
+function getPubLocal(){ try { return JSON.parse(localStorage.getItem('bb-pub-local') || '[]'); } catch(e){ return []; } }
+function setPubLocal(a){ try { localStorage.setItem('bb-pub-local', JSON.stringify(a.slice(0,60))); } catch(e){} }
+function comShareLink(snap){ return location.origin + location.pathname + '#m=' + btoa(unescape(encodeURIComponent(snap))); }
+
+var communityPanel = document.getElementById('communityPanel');
+function openCommunity(){ if (!communityPanel) return; communityPanel.hidden = false; syncComMode(); loadCommunity(); }
+function closeCommunity(){ if (communityPanel) communityPanel.hidden = true; }
+function syncComMode(){
+  var ep = galleryEndpoint(), m = document.getElementById('comMode'), inp = document.getElementById('comEndpoint');
+  if (m) m.textContent = ep ? ('🌍 ' + t('מחובר לשיתוף גלובלי')) : ('📱 ' + t('מצב מקומי — פרסום יוצר גם קישור לשיתוף'));
+  if (inp) inp.value = ep;
+}
+function comCard(item, source){
+  var card = document.createElement('div'); card.className = 'comCard';
+  var img = document.createElement('img'); img.className = 'comThumb'; img.src = item.thumb || ''; img.alt = item.name || '';
+  var nm = document.createElement('div'); nm.className = 'comN'; nm.textContent = item.name || t('דגם'); nm.dir = 'auto';
+  var au = document.createElement('div'); au.className = 'comA'; au.textContent = '👤 ' + (item.author || t('אנונימי'));
+  img.addEventListener('click', function(){ comLoad(item, source); });
+  card.appendChild(img); card.appendChild(nm); card.appendChild(au);
+  return card;
+}
+function comRenderList(items, source){
+  var grid = document.getElementById('comGrid'); if (!grid) return; grid.innerHTML = '';
+  if (!items || !items.length){ var e = document.createElement('div'); e.className = 'comEmpty'; e.textContent = t('עדיין אין דגמים משותפים. בנו משהו ולחצו "פרסם".'); grid.appendChild(e); return; }
+  items.forEach(function(it){ grid.appendChild(comCard(it, source)); });
+}
+function loadCommunity(){
+  var ep = galleryEndpoint(), notice = document.getElementById('comNotice');
+  if (!ep){
+    if (notice){ notice.hidden = false; notice.textContent = t('מצב מקומי: מוצגים דגמים שפורסמו מהמכשיר הזה. לשיתוף עם כולם — שלחו קישור, או חברו שרת (⚙️ למטה).'); }
+    comRenderList(getPubLocal(), 'local'); return;
+  }
+  if (notice) notice.hidden = true;
+  var grid = document.getElementById('comGrid'); if (grid) grid.innerHTML = '<div class="comEmpty">' + t('טוען…') + '</div>';
+  fetch(ep, { method:'GET' }).then(function(r){ if (!r.ok) throw 0; return r.json(); })
+    .then(function(j){ comRenderList((j && j.models) || [], 'server'); })
+    .catch(function(){ if (notice){ notice.hidden = false; notice.textContent = t('לא הצלחתי להתחבר לשרת — מציג דגמים מקומיים.'); } comRenderList(getPubLocal(), 'local'); });
+}
+function comLoad(item, source){
+  function build(list){ window.BrickAPI.build({ parts:list }); closeCommunity(); setTimeout(function(){ if (window.__fitView) window.__fitView(); }, 300); toast(t('נטען — אפשר לערוך ולשמור לאזור האישי')); }
+  if (item.parts){ build(typeof item.parts === 'string' ? JSON.parse(item.parts) : item.parts); return; }
+  var ep = galleryEndpoint();
+  if (ep && item.id){ fetch(ep + '?model=' + encodeURIComponent(item.id)).then(function(r){ return r.json(); }).then(function(j){ if (j && j.parts) build(j.parts); }).catch(function(){ toast(t('שגיאה בטעינה')); }); }
+}
+function publishToCommunity(name){
+  if (parts.length < 1){ toast(t('הלוח ריק — בנו משהו קודם')); return; }
+  var snap = snapshot();
+  var item = { id:uid(), name:name || ('דגם של ' + curUser), author:curUser, thumb:captureThumb(), ts:Date.now() };
+  var loc = getPubLocal(); loc.unshift({ id:item.id, name:item.name, author:item.author, thumb:item.thumb, parts:snap, ts:item.ts }); setPubLocal(loc);
+  var ep = galleryEndpoint();
+  if (ep){
+    fetch(ep, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ name:item.name, author:item.author, thumb:item.thumb, parts:JSON.parse(snap) }) })
+      .then(function(r){ if (!r.ok) throw 0; return r.json(); })
+      .then(function(){ toast('🌍 ' + t('פורסם לכולם!')); if (communityPanel && !communityPanel.hidden) loadCommunity(); })
+      .catch(function(){ toast(t('פורסם מקומית — השרת לא הגיב')); });
+  } else {
+    var url = comShareLink(snap);
+    var cp = (navigator.clipboard && navigator.clipboard.writeText) ? navigator.clipboard.writeText(url) : Promise.reject();
+    cp.then(function(){ toast('🔗 ' + t('קישור לשיתוף הועתק — כל מי שיפתח יראה את הדגם')); })
+      .catch(function(){ var lp = document.getElementById('linkPanel'); if (lp){ lp.hidden = false; document.getElementById('linkOut').value = url; } });
+  }
+  if (communityPanel && !communityPanel.hidden) loadCommunity();
+}
+function askNameAndPublish(){
+  var def = (currentGalId && galById(currentGalId) && galById(currentGalId).name) || ('דגם של ' + curUser);
+  var name = (typeof prompt === 'function') ? prompt(t('שם הדגם לפרסום:'), def) : def;
+  if (name === null) return; publishToCommunity((name || '').trim() || def);
+}
+if (document.getElementById('btnCommunity')) document.getElementById('btnCommunity').addEventListener('click', openCommunity);
+if (document.getElementById('btnCloseCommunity')) document.getElementById('btnCloseCommunity').addEventListener('click', closeCommunity);
+if (communityPanel) communityPanel.addEventListener('click', function(e){ if (e.target === communityPanel) closeCommunity(); });
+if (document.getElementById('btnComRefresh')) document.getElementById('btnComRefresh').addEventListener('click', loadCommunity);
+if (document.getElementById('btnComPublish')) document.getElementById('btnComPublish').addEventListener('click', askNameAndPublish);
+if (document.getElementById('btnComSetupToggle')) document.getElementById('btnComSetupToggle').addEventListener('click', function(){ var b = document.getElementById('comSetupBody'); if (b) b.hidden = !b.hidden; });
+if (document.getElementById('btnComEndpointSave')) document.getElementById('btnComEndpointSave').addEventListener('click', function(){ setGalleryEndpoint(document.getElementById('comEndpoint').value.trim()); syncComMode(); loadCommunity(); toast(t('נשמר')); });
+if (document.getElementById('btnInvSave')) document.getElementById('btnInvSave').addEventListener('click', function(){ saveNamedToGallery(t('הבית שלי') + ' · ' + curUser); });
+if (document.getElementById('btnInvPublish')) document.getElementById('btnInvPublish').addEventListener('click', function(){ publishToCommunity(t('הבית שלי') + ' · ' + curUser); });
+window.__publish = function(n){ publishToCommunity(n); };
+window.__saveGal = function(n){ return saveNamedToGallery(n); };
+window.__community = function(){ return { endpoint:galleryEndpoint(), local:getPubLocal().length, galCount:getGal().length }; };
+
 syncTop();
 requestAnimationFrame(tick);
 syncTierUI();

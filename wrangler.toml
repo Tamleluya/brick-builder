@@ -1,0 +1,13 @@
+name = "brick-ai"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# ANTHROPIC_API_KEY is a secret — do NOT put it here.
+# Set it once with:  wrangler secret put ANTHROPIC_API_KEY
+
+# Public community gallery (KV store). Create the namespace once, paste its id below:
+#   wrangler kv namespace create GALLERY
+# then set id = "..." and deploy.  The /gallery route needs this binding.
+[[kv_namespaces]]
+binding = "GALLERY"
+id = "REPLACE_WITH_KV_ID"

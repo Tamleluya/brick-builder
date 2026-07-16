@@ -400,7 +400,25 @@
   .invMatchS{font-size:10px;color:var(--muted);text-align:center;line-height:1.2;}
   .invMatchCard.ok .invMatchS{color:#3fae5a;font-weight:700;}
   .invEmpty{grid-column:1/-1;font-size:12px;color:var(--muted);text-align:center;padding:14px;}
+  .invSaveRow{display:flex;gap:8px;flex-wrap:wrap;padding:8px 2px 2px;}
   @media (max-width:560px){ .invResCols{grid-template-columns:1fr;} }
+
+  /* גלריה כללית */
+  .comBar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:4px 2px 8px;}
+  .comMode{font-size:12px;color:var(--muted);}
+  .comActs{display:flex;gap:8px;flex-wrap:wrap;}
+  .comNotice{font-size:12px;line-height:1.5;color:var(--muted);background:var(--panel-soft);border-radius:10px;padding:9px 12px;margin-bottom:8px;}
+  .comGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;max-height:52vh;overflow-y:auto;padding:2px;}
+  .comCard{position:relative;background:var(--panel-soft);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:3px;}
+  .comThumb{width:100%;height:96px;object-fit:cover;background:rgba(255,255,255,.05);border-radius:9px;cursor:pointer;}
+  .comN{font-size:12px;line-height:1.2;max-height:2.4em;overflow:hidden;}
+  .comA{font-size:10.5px;color:var(--accent);}
+  .comEmpty{grid-column:1/-1;font-size:12.5px;color:var(--muted);text-align:center;padding:20px 10px;line-height:1.6;}
+  .comSetup{border-top:1px solid rgba(255,255,255,.08);margin-top:8px;padding-top:8px;}
+  .comSetupToggle{background:none;border:0;cursor:pointer;color:var(--muted);font-size:11.5px;font-family:inherit;padding:2px;}
+  .comSetupBody{display:flex;flex-direction:column;gap:6px;padding-top:8px;}
+  .comSetupHint{font-size:11px;color:var(--muted);line-height:1.5;}
+  .comSetupBody input{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--text);padding:9px 11px;font-family:inherit;font-size:12px;direction:ltr;}
   .bomRow{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:7px;background:var(--panel-soft);font-size:12.5px;}
   .bomRow .bomC{color:var(--accent);direction:ltr;font-variant-numeric:tabular-nums;}
 
@@ -511,7 +529,8 @@
   <button class="tbtn wide" id="btnAddTop" title="הוסף חלק — חלון גדול עם תמונות">➕ חלק</button>
   <button class="tbtn wide" id="btnAccount" title="אזור אישי"><span id="tierBadge">חינם</span></button>
   <button class="tbtn wide" id="btnUser" title="החלפת משתמש">👤</button>
-  <button class="tbtn" id="btnGallery" title="הדגמים שלי">📁</button>
+  <button class="tbtn" id="btnGallery" title="הדגמים שלי — האזור האישי">📁</button>
+  <button class="tbtn" id="btnCommunity" title="גלריה כללית — הדגמים של כולם">🌍</button>
   <button class="tbtn" id="btnCam" title="מצב סיבוב מבט">🧭</button>
   <button class="tbtn" id="btnShare" title="שיתוף הדגם בקישור">🔗</button>
   <button class="tbtn" id="btnSearch" title="חיפוש בקטלוג המלא">🔍</button>
@@ -794,6 +813,10 @@
     </div>
     <div id="invResult" hidden>
       <div class="invResTitle" id="invResTitle"></div>
+      <div class="invSaveRow">
+        <button class="abtn" id="btnInvSave">💾 שמור לאזור האישי</button>
+        <button class="abtn" id="btnInvPublish">🌍 פרסם לכולם</button>
+      </div>
       <div class="invResCols">
         <div class="invResCol"><div class="bomTtl">נוצל</div><div class="libBom" id="invUsed"></div></div>
         <div class="invResCol"><div class="bomTtl">נשאר</div><div class="libBom" id="invLeft"></div></div>
@@ -802,6 +825,32 @@
     <div id="invMatchWrap" hidden>
       <div class="bomTtl">דגמים מהספרייה שמתאימים למלאי</div>
       <div class="invMatchList" id="invMatchList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="search" id="communityPanel" hidden>
+  <div class="searchBox pill" style="width:min(720px,100%);">
+    <div class="searchHead">
+      <b class="galTitle">🌍 <span>גלריה כללית</span></b>
+      <button class="tbtn" id="btnCloseCommunity">✕</button>
+    </div>
+    <div class="comBar">
+      <span class="comMode" id="comMode"></span>
+      <div class="comActs">
+        <button class="abtn" id="btnComRefresh">↻ רענן</button>
+        <button class="abtn wide" id="btnComPublish">🌍 פרסם את הדגם שלי</button>
+      </div>
+    </div>
+    <div class="comNotice" id="comNotice" hidden></div>
+    <div class="comGrid" id="comGrid"></div>
+    <div class="comSetup">
+      <button class="comSetupToggle" id="btnComSetupToggle">⚙️ חיבור שרת לשיתוף גלובלי (למנהל)</button>
+      <div class="comSetupBody" id="comSetupBody" hidden>
+        <div class="comSetupHint">כתובת ה-Worker לשיתוף (פעם אחת). ריק = מצב מקומי + קישורים.</div>
+        <input id="comEndpoint" type="url" placeholder="https://brick-ai.<name>.workers.dev/gallery" autocomplete="off">
+        <button class="abtn" id="btnComEndpointSave">שמור כתובת</button>
+      </div>
     </div>
   </div>
 </div>
